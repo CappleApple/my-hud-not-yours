@@ -10,8 +10,6 @@ Layouts save automatically to:
 config/myhudnotyours/hud-layout.json
 ```
 
-Existing `config/elementsnotscreens` layouts and imported textures are copied forward automatically when no My HUD Not Yours layout exists. The legacy folder is retained as a backup.
-
 ## Player Workflow
 
 * Left-drag an element to move it.
