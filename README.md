@@ -1,102 +1,179 @@
 # My HUD Not Yours
 
-My HUD Not Yours is a client-side NeoForge 1.21.1 HUD editor. Bind **Unlock HUD** in Minecraft's Controls menu, open it in a world, click an element, and manipulate it directly. The key is unbound by default. Layouts save automatically to `config/myhudnotyours/hud-layout.json`. Existing `config/elementsnotscreens` layouts and imported textures are copied forward automatically when the new location does not yet contain a layout; the legacy folder is retained as a backup.
+My HUD Not Yours is a client-side NeoForge 1.21.1 HUD editor. Bind **Unlock HUD** in Minecraft's Controls menu, open it in a world, select an element, and manipulate it directly.
 
-## Player workflow
+The key is unbound by default.
 
-- Left-drag a visible element to move it.
-- Use the mouse wheel to change its independent scale.
-- Hold Ctrl while dragging to bypass snapping; hold Shift for fine movement.
-- Middle-click an element, or use **Reset this element**, to restore its original placement and rendering.
-- Use the element list to select overlapping, conditionally visible, or hidden elements.
-- Selecting a currently hidden or conditional element shows its last-known/configured bounds, which remain directly draggable and middle-click resettable.
-- Use the search field above the element list to filter by name, layer ID, namespace, or element type.
-- Modified elements appear first with a yellow outline in the element list; resetting one removes the outline, restores strict vanilla passthrough, and returns it to the untouched group.
-- **Lock to default** elements appear last with a solid cyan outline and barrier icon. The selected locked element exposes only its unlock control, has no world bounding box, and completely bypasses renderer interception.
-- Change the anchor to any screen corner, edge center, or center. Offsets remain relative to that anchor across window sizes, aspect ratios, fullscreen changes, and GUI scales.
-- Use **Original** or **Hidden** for every intercepted named layer.
-- Data-linked bars additionally provide **Custom** and **Boss Bar** modes.
-- Every element can be shown or suppressed in creative mode. Data-linked bars can also hide themselves when empty or full.
-- Click any numeric value field to type an exact value. Enter, Tab, or clicking away commits it; Escape cancels it. Scrolling over a numeric field changes that field using the same increment as its minus/plus buttons.
-- Click a layer's hex color button to open the color picker. It provides a color wheel, hue and brightness sliders, an opacity slider, and direct `#RRGGBB`/`#RRGGBBAA` entry.
-- The nine quick-color swatches begin with the built-in presets. Each bar persists its own most-recent colors, which appear first and progressively replace older preset slots.
+Layouts save automatically to:
 
-The property panel is intentionally compact:
+```text
+config/myhudnotyours/hud-layout.json
+```
 
-- **Basic** controls mode, anchor, position, scale, source, dimensions, direction, and text.
-- **Style** controls each procedural/texture layer, colors (wheel, sliders, hex, and per-bar recents), opacity, border, and texture sizing.
-- **Texture** assigns Background, Frame, Filled, Empty, and Trail independently.
-- **Trail** controls decrease/increase tracking, delay, catch-up duration, color, opacity, and texture.
+Existing `config/elementsnotscreens` layouts and imported textures are copied forward automatically when no My HUD Not Yours layout exists. The legacy folder is retained as a backup.
 
-Custom mode starts as a complete procedural solid-color bar. No texture is required.
+## Player Workflow
 
-## Texture browser and imports
+* Left-drag an element to move it.
+* Use the mouse wheel to change its independent scale.
+* Hold Ctrl while dragging to bypass snapping.
+* Hold Shift while dragging for fine movement.
+* Middle-click an element, or use **Reset this element**, to restore its original placement and rendering.
+* Use the element list to select overlapping, hidden, or conditionally visible elements.
+* Hidden and conditional elements retain draggable configured bounds in the editor.
+* Search elements by name, layer ID, namespace, or type.
+* Modified elements appear first in the element list with a yellow outline.
+* **Lock to default** completely excludes an element from HUD modification until unlocked.
+* Anchor elements to any screen corner, edge center, or center.
+* Anchor-relative offsets remain stable across resolution, aspect-ratio, fullscreen, and GUI-scale changes.
+* Every supported element provides **Original** and **Hidden** modes.
+* Data-linked bars additionally provide **Custom** and **Boss Bar** modes.
+* Elements can be independently shown or suppressed in creative mode.
+* Data-linked bars can hide themselves when empty or full.
+* Numeric fields support direct entry and mouse-wheel adjustment.
+* Color controls support a color wheel, hue and brightness adjustment, opacity, and direct `#RRGGBB` or `#RRGGBBAA` input.
+* Each bar remembers its most recently used colors.
 
-The texture browser enumerates the active resource view only when opened and caches the result. Its tabs distinguish Minecraft resources, mod resources, overridden/pack resources, and imports. Search matches namespaces, paths, and source-pack names. Visible previews show dimensions and animation state.
+The property panel is divided into:
 
-**Import PNG** opens the platform Java file picker. The selected PNG is copied into `config/myhudnotyours/textures/`; a neighboring `name.png.mcmeta` is copied too. Imported files appear immediately without a game restart or resource-pack authoring.
+* **Basic** — mode, anchor, position, scale, source, dimensions, direction, and text.
+* **Style** — procedural and texture layers, colors, opacity, borders, and texture sizing.
+* **Texture** — Background, Frame, Filled, Empty, and Trail textures.
+* **Trail** — increase/decrease tracking, delay, catch-up duration, color, opacity, and texture.
 
-Selected resource and imported textures are loaded through the same managed texture path. Standard Minecraft `animation` metadata is supported, including default frame strips, explicit frame indices, per-frame durations, and custom frame dimensions. Texture layers support:
+Custom bars work without textures and start as complete procedural solid-color bars.
 
-- Stretch
-- Tile
-- 9-slice with editable left/top/right/bottom margins
+## Texture Browser and Imports
 
-If a configured texture disappears, that layer is skipped safely and the rest of the bar continues rendering.
+The built-in texture browser can search the currently active Minecraft, mod, resource-pack, and imported textures.
 
-## Semantic bar sources
+Search matches namespaces, paths, and source-pack names. Texture previews include dimensions and animation state.
 
-Built-in client sources are:
+**Import PNG** opens the platform file picker and copies the selected image into:
 
-- health
-- absorption
-- armor
-- hunger
-- air
-- experience progress
-- mount health
-- mount jump charge
+```text
+config/myhudnotyours/textures/
+```
 
-Vanilla health, armor, hunger, air, experience, mount health, and mount jump named layers are linked automatically. A bar's source can also be changed in the editor. Inactive conditional sources, such as air while the player is breathing normally or mount health while dismounted, do not draw a replacement.
+A neighboring `name.png.mcmeta` file is imported with it when present.
 
-Iron's Spells 'n Spellbooks' `irons_spellbooks:mana_overlay` has a full optional semantic integration. Current mana comes from its synchronized `ClientMagicData`, maximum mana comes from its syncable `max_mana` player attribute, and visibility follows its own `ManaBarOverlay.shouldShowManaBar` rule. The integration is loaded only when Iron's Spells is present and enables Original, Custom, Boss Bar, and Hidden modes with the `irons_spellbooks:mana` source.
+Imported textures become available immediately without restarting the game or creating a resource pack.
 
-The delayed-value trail supports Off, Decrease Only, Increase Only, and Both. A qualifying change updates the primary value immediately, holds the previous trail value for the configured delay, and then catches up with smoothstep easing. Repeated qualifying changes preserve the readable outer value and restart the delay.
+Standard Minecraft animation metadata is supported, including:
 
-## Discovery and compatibility model
+* Default frame strips
+* Explicit frame indices
+* Per-frame durations
+* Custom frame dimensions
 
-NeoForge 1.21.1 gives every registered GUI layer a stable `ResourceLocation` and fires cancellable pre/post events around that layer. My HUD Not Yours uses that layer ID as its primary stable identity. Freshly discovered and reset elements are strict vanilla passthroughs: the mod observes their bounds for editor selection but does not cancel, replace, tint, or transform their renderers. A deliberate editor change sets the persisted `customized` flag. Modpack-authored layouts can set the same flag directly, and authored placement/scale/mode differences are detected automatically. Customized original renderers use a scoped pose transform, keeping their textures, animation, and mod updates intact. `lockedToDefault` is a stronger per-element bypass: after discovery keeps the element selectable in the list, the interceptor returns before bounds tracking, transformations, cancellation, replacement rendering, or stacking shims.
+Texture layers support:
 
-The vanilla `camera_overlays` layer is deliberately excluded before discovery or interception. Full-screen vignette, portal, spyglass, frozen-screen, and helmet effects are render effects rather than placeable HUD elements, so the mod never exposes or touches them.
+* Stretch
+* Tile
+* 9-slice with configurable left, top, right, and bottom margins
 
-While a layer renders, a small client mixin observes common `GuiGraphics` primitives—fills, texture blits, text, and items—and collects their transformed union. Unknown mod layers therefore remain selectable as opaque regions without per-mod integration. Debug details in the editor show the stable ID, namespace, render path, bounds, classification, source, render order, and observed texture atlases.
+If a configured texture disappears, only that texture layer is skipped.
 
-Vanilla numeric layers share `Gui.leftHeight` and `Gui.rightHeight` bookkeeping. When one is hidden or replaced, its renderer is executed under an empty scissor far offscreen before cancellation. This preserves non-layout side effects without leaking the original visuals. Hidden or value-suppressed bars have their stack counters restored so they consume no row; visible replacement bars preserve one row for later vanilla layers.
+## Semantic Bar Sources
 
-When vanilla Health is Custom or Boss Bar, its preserved `leftHeight` contribution is normalized to one row. Armor and later overlays such as the selected-item name therefore stack as though health occupied one vanilla row, regardless of boosted maximum health.
+Built-in sources include:
 
-### Honest technical limits
+* Health
+* Absorption
+* Armor
+* Hunger
+* Air
+* Experience progress
+* Mount health
+* Mount jump charge
 
-- A mod that registers several inseparable widgets as one NeoForge layer is exposed as one composite region. Splitting it would require explicit integration.
-- Rendering performed directly through OpenGL, a custom framebuffer, or a post-processing pass can bypass `GuiGraphics` bounds collection. Its named layer can still be hidden and transformed if it respects the active pose, but an automatic click region may be unavailable.
-- HUD rendering performed only from a broad event and not registered as a named GUI layer has no safe independent cancellation boundary. The mod leaves it alone rather than risk corrupting unrelated rendering.
-- Generic opacity is not applied to original third-party rendering because no scoped global alpha is safe for every render path. Custom bar layers have independent opacity.
-- Resource enumeration is deliberately on-demand. The browser can contain many entries in large packs, but image decoding is limited to visible/cached previews.
+Vanilla health, armor, hunger, air, experience, mount health, and mount jump layers are linked automatically.
 
-These boundaries are extension points, not claims of semantic integration. `BarSourceRegistry` accepts deeper numeric sources, while the layer registry remains independent of future hotbar, selector, text, composite-child, or profile work.
+A bar's data source can also be changed manually in the editor.
 
-## Configuration resilience
+Conditional sources such as air or mount health do not render replacements while inactive.
 
-The pretty-printed JSON keeps settings for absent layers and missing mods. Discovery adds new elements without deleting unknown configuration. Saves use a temporary file and atomic replacement where the filesystem supports it. Stored data includes stable identity, type, the explicit `customized` passthrough flag, hard-lock and visibility flags, anchor-relative offsets, scale, mode, last native bounds, bar source, dimensions, direction, text, every layer style/texture, per-bar recent colors, 9-slice margins, and trail settings. Version-1 layouts migrate moved, scaled, hidden, or replaced elements as customized while leaving untouched entries inactive.
+### Iron's Spells 'n Spellbooks
+
+When Iron's Spells 'n Spellbooks is installed, its mana overlay receives full bar integration.
+
+The mana layer supports:
+
+* Original
+* Custom
+* Boss Bar
+* Hidden
+
+and exposes the source:
+
+```text
+irons_spellbooks:mana
+```
+
+Visibility follows Iron's own mana-bar visibility rules.
+
+## Delayed Value Trail
+
+Bars can display a delayed trail when their value changes.
+
+Available modes are:
+
+* Off
+* Decrease Only
+* Increase Only
+* Both
+
+The primary value updates immediately. The trail holds the previous value for the configured delay before smoothly catching up.
+
+Repeated qualifying changes restart the delay while preserving the outer trail value.
+
+## HUD Discovery and Compatibility
+
+My HUD Not Yours automatically discovers named NeoForge GUI layers and uses their stable layer IDs to identify HUD elements.
+
+Unmodified elements remain visually untouched until explicitly changed in the editor.
+
+Unknown mod HUD layers can often still be moved, scaled, hidden, and selected without dedicated compatibility code.
+
+The full-screen vanilla `camera_overlays` layer is intentionally excluded. Effects such as the vignette, portal overlay, spyglass mask, freezing overlay, and helmet overlays are not treated as movable HUD elements.
+
+The editor's debug information can show:
+
+* Layer ID
+* Namespace
+* Render path
+* Bounds
+* Classification
+* Data source
+* Render order
+* Observed texture atlases
+
+### Technical Limits
+
+* Mods that combine several widgets into one inseparable GUI layer are exposed as one composite element unless explicit integration is added.
+* Rendering performed outside normal GUI rendering paths may not provide an automatically detectable click region.
+* HUD rendering that is not exposed as an independently cancellable GUI layer cannot safely be controlled individually.
+* Generic opacity is not applied to arbitrary third-party original rendering. Custom bar layers support independent opacity.
+* Texture enumeration is performed only when the browser is opened, and large packs may contain many results.
+
+These limitations do not prevent explicit integrations or additional semantic sources from being added later.
+
+## Configuration Resilience
+
+Layouts preserve settings for temporarily missing mods, layers, and textures.
+
+Newly discovered HUD elements are added without deleting unknown configuration.
+
+Existing version-1 layouts are migrated automatically.
+
+Stored layouts include element identity, placement, scale, mode, visibility, bar source and dimensions, styles, textures, colors, 9-slice settings, and trail configuration.
 
 ## Development
 
-Requirements: Java 21 and NeoForge 21.1.244 for Minecraft 1.21.1.
+Requires Java 21 and NeoForge 21.1.244 for Minecraft 1.21.1.
 
 ```powershell
 $env:JAVA_HOME='C:\path\to\jdk-21'
 .\gradlew.bat test build
 .\gradlew.bat runClient
 ```
-
-The unit suite covers anchor persistence across resolutions, strict-passthrough migration/reset behavior, screen/element snapping, decrease and increase trails, repeated damage delay resets, and standard animated texture metadata. `check` also inspects the release JAR for required metadata, mixin configuration, and translations.
