@@ -1,0 +1,60 @@
+package com.cappleapple.myhudnotyours.config;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.cappleapple.myhudnotyours.model.Bounds;
+import com.cappleapple.myhudnotyours.model.HudElementLayout;
+import org.junit.jupiter.api.Test;
+
+class HudConfigTest {
+    @Test
+    void versionOneMigrationOnlyActivatesPreviouslyEditedLayouts() {
+        HudConfig config = new HudConfig();
+        config.configVersion = 1;
+        HudElementLayout untouched = initialized("untouched");
+        HudElementLayout moved = initialized("moved");
+        moved.offsetY += 4.0;
+        config.elements.put(untouched.id, untouched);
+        config.elements.put(moved.id, moved);
+
+        config.sanitize();
+
+        assertFalse(untouched.customized);
+        assertTrue(moved.customized);
+        assertTrue(config.configVersion >= 2);
+    }
+
+    @Test
+    void versionTwoModpackPlacementActivatesWithoutManualFlag() {
+        HudConfig config = new HudConfig();
+        HudElementLayout authored = initialized("authored");
+        authored.offsetX -= 12.0;
+        config.elements.put(authored.id, authored);
+
+        config.sanitize();
+
+        assertTrue(authored.customized);
+    }
+
+    @Test
+    void preVisibilityConfigsKeepCreativeElementsVisible() {
+        HudConfig config = new HudConfig();
+        config.configVersion = 3;
+        HudElementLayout legacy = initialized("legacy");
+        legacy.showInCreative = false;
+        config.elements.put(legacy.id, legacy);
+
+        config.sanitize();
+
+        assertTrue(legacy.showInCreative);
+        assertTrue(config.configVersion >= 4);
+    }
+
+    private static HudElementLayout initialized(String id) {
+        HudElementLayout layout = new HudElementLayout();
+        layout.id = id;
+        layout.initializeFrom(new Bounds(20.0, 30.0, 80.0, 10.0), 320, 180);
+        return layout;
+    }
+}
