@@ -8,11 +8,13 @@ import com.cappleapple.myhudnotyours.texture.TextureImporter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 
 public final class TextureBrowserScreen extends Screen {
     private static final int TILE_WIDTH = 112;
@@ -23,6 +25,7 @@ public final class TextureBrowserScreen extends Screen {
     private EditBox search;
     private TextureCatalog.Category category = TextureCatalog.Category.ALL;
     private int scrollRows;
+    private List<FormattedCharSequence> hoveredDetails = List.of();
 
     public TextureBrowserScreen(Screen parent, Consumer<TextureReference> selected) {
         super(Component.translatable("gui.myhudnotyours.texture_browser"));
@@ -47,6 +50,7 @@ public final class TextureBrowserScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, width, height, 0xF00D1118);
         hitTargets.clear();
+        hoveredDetails = List.of();
         graphics.drawString(font, "Texture Browser", 9, 9, 0xFFFFFFFF, true);
         button(graphics, width - 194, 27, 90, 19, "Import PNG", () ->
                 TextureImporter.chooseAndImport(() -> scrollRows = 0));
@@ -82,6 +86,7 @@ public final class TextureBrowserScreen extends Screen {
         graphics.drawString(font, entries.size() + " textures  •  active resources and imported files are cached on demand",
                 9, height - 14, 0xFF83909E, false);
         super.render(graphics, mouseX, mouseY, partialTick);
+        if (!hoveredDetails.isEmpty()) graphics.renderTooltip(font, hoveredDetails, mouseX, mouseY);
     }
 
     private void renderEntry(GuiGraphics graphics, TextureCatalog.Entry entry, int x, int y, int mouseX, int mouseY) {
@@ -98,6 +103,7 @@ public final class TextureBrowserScreen extends Screen {
         } else {
             graphics.drawString(font, "unavailable", x + 56, y + 29, 0xFFFF7070, false);
         }
+        if (hovered) hoveredDetails = tooltipDetails(entry, handle);
         graphics.drawString(font, ellipsis(entry.namespace(), 48), x + 56, y + 6, 0xFF8FE8FF, false);
         graphics.drawString(font, ellipsis(entry.sourcePack(), 48), x + 56, y + 17, 0xFF8794A2, false);
         graphics.drawString(font, ellipsis(entry.path(), TILE_WIDTH - 12), x + 5, y + 57, 0xFFE5EAF0, false);
@@ -106,6 +112,31 @@ public final class TextureBrowserScreen extends Screen {
             selected.accept(entry.reference().copy());
             minecraft.setScreen(parent);
         }));
+    }
+
+    private List<FormattedCharSequence> tooltipDetails(TextureCatalog.Entry entry, TextureHandle handle) {
+        List<Component> details = new ArrayList<>();
+        details.add(Component.literal(entry.displayId()).withStyle(ChatFormatting.AQUA));
+        details.add(Component.literal("Reference: " + entry.reference().key()));
+        details.add(Component.literal("Namespace: " + entry.namespace()));
+        details.add(Component.literal("Path: " + entry.path()));
+        details.add(Component.literal("Source pack: " + entry.sourcePack()));
+        details.add(Component.literal("Category: " + entry.category().displayName()));
+        if (handle == null) {
+            details.add(Component.literal("Texture data unavailable").withStyle(ChatFormatting.RED));
+        } else {
+            details.add(Component.literal("Resolved as: " + handle.location()));
+            details.add(Component.literal("Texture sheet: " + handle.textureWidth() + "×" + handle.textureHeight()));
+            details.add(Component.literal("Source region: " + handle.sourceX() + ", " + handle.sourceY()
+                    + " — " + handle.sourceWidth() + "×" + handle.sourceHeight()));
+            details.add(Component.literal("Animated: " + (handle.animated() ? "Yes" : "No"))
+                    .withStyle(handle.animated() ? ChatFormatting.GOLD : ChatFormatting.GRAY));
+        }
+
+        int tooltipWidth = Math.max(80, Math.min(420, width - 32));
+        List<FormattedCharSequence> wrapped = new ArrayList<>();
+        for (Component detail : details) wrapped.addAll(font.split(detail, tooltipWidth));
+        return List.copyOf(wrapped);
     }
 
     private List<TextureCatalog.Entry> filtered() {

@@ -6,6 +6,7 @@ import com.cappleapple.myhudnotyours.config.LayoutStore;
 import com.cappleapple.myhudnotyours.discovery.HudElementDefinition;
 import com.cappleapple.myhudnotyours.discovery.HudElementRegistry;
 import com.cappleapple.myhudnotyours.discovery.HudElementRuntime;
+import com.cappleapple.myhudnotyours.discovery.HudSnapTargets;
 import com.cappleapple.myhudnotyours.discovery.SnapEngine;
 import com.cappleapple.myhudnotyours.model.BarLayerStyle;
 import com.cappleapple.myhudnotyours.model.BarStyle;
@@ -38,6 +39,8 @@ public final class HudEditorScreen extends Screen {
     private static final int LIST_WIDTH = 126;
     private static final int LOCKED_OUTLINE = 0xFF00E5FF;
     private static final ItemStack LOCKED_ICON = Items.BARRIER.getDefaultInstance();
+    private static String rememberedSelectedId;
+    private static boolean rememberedListPreview;
     private static final int[] COLOR_PRESETS = {
             0xFFFFFFFF, 0xFF10141C, 0xFFCC3333, 0xFFD68A32, 0xFF80D43B,
             0xFF48BDE8, 0xFF8267D8, 0xFFFFF2A8, 0xFFEE78B7
@@ -46,6 +49,7 @@ public final class HudEditorScreen extends Screen {
     private final List<HitTarget> hitTargets = new ArrayList<>();
     private final List<NumericTarget> numericTargets = new ArrayList<>();
     private String selectedId;
+    private boolean listPreviewSelection;
     private boolean dragging;
     private double lastDragX;
     private double lastDragY;
@@ -67,7 +71,13 @@ public final class HudEditorScreen extends Screen {
     @Override
     protected void init() {
         if (selectedId == null && !registry.discovered().isEmpty()) {
-            selectedId = registry.discovered().getFirst().stableId();
+            if (rememberedSelectedId != null && registry.definition(rememberedSelectedId) != null) {
+                selectedId = rememberedSelectedId;
+                listPreviewSelection = rememberedListPreview;
+            } else {
+                select(registry.discovered().getFirst().stableId(), false);
+            }
+            revealSelectedRow();
         }
         elementSearch = new EditBox(font, 9, 45, LIST_WIDTH - 10, 17, Component.literal("Search elements"));
         elementSearch.setMaxLength(128);
@@ -97,7 +107,7 @@ public final class HudEditorScreen extends Screen {
         graphics.drawString(font, "Drag to move  •  Wheel to scale  •  Ctrl bypasses snap  •  Shift is precise  •  Middle resets",
                 88, 6, 0xFFE8EDF4, false);
 
-        renderElementBoxes(graphics);
+        renderElementFeedback(graphics, mouseX, mouseY);
         renderSnapGuides(graphics);
         renderElementList(graphics, mouseX, mouseY);
         renderProperties(graphics, mouseX, mouseY);
@@ -107,26 +117,67 @@ public final class HudEditorScreen extends Screen {
         }
     }
 
-    private void renderElementBoxes(GuiGraphics graphics) {
-        for (HudElementDefinition definition : registry.discovered()) {
-            HudElementLayout layout = registry.layout(definition);
-            if (layout.lockedToDefault) continue;
-            HudElementRuntime runtime = registry.runtime(definition.stableId());
-            boolean selected = definition.stableId().equals(selectedId);
-            boolean currentlyDrawn = runtime != null && runtime.rendered()
-                    && System.currentTimeMillis() - runtime.lastSeenMillis() < 250L;
-            if (!currentlyDrawn && !selected) continue;
-            Bounds bounds = editorBounds(definition);
-            int color = selected ? 0xFFEAFBFF : 0xA858D9F2;
-            outline(graphics, bounds, color, selected ? 2 : 1);
-            String label = layout.displayName;
-            int labelX = (int) Math.round(bounds.x());
-            int labelY = Math.max(21, (int) Math.round(bounds.y()) - 10);
-            int labelWidth = font.width(label) + 5;
-            graphics.fill(labelX, labelY, labelX + labelWidth, labelY + 9, 0xC9121821);
-            graphics.drawString(font, label, labelX + 2, labelY + 1, color, false);
-            if (LayoutStore.get().debugMode) renderDebug(graphics, definition, runtime, bounds, labelX, labelY + 10);
+    private void renderElementFeedback(GuiGraphics graphics, int mouseX, int mouseY) {
+        HudElementDefinition selected = selectedId == null ? null : registry.definition(selectedId);
+        if (listPreviewSelection && selected != null && !registry.layout(selected).lockedToDefault
+                && !currentlyRendered(selected)) {
+            Bounds bounds = editorBounds(selected);
+            if (dragging || bounds.contains(mouseX, mouseY)) shadeBounds(graphics, bounds);
+            outlineOutside(graphics, bounds, 0xFF8FE8FF);
+            renderElementName(graphics, selected, bounds);
+            return;
         }
+
+        HudElementDefinition definition = highlightedElement(mouseX, mouseY);
+        if (definition == null) return;
+        Bounds bounds = editorBounds(definition);
+        shadeBounds(graphics, bounds);
+        renderElementName(graphics, definition, bounds);
+    }
+
+    private void shadeBounds(GuiGraphics graphics, Bounds bounds) {
+        int left = (int) Math.floor(bounds.x());
+        int top = (int) Math.floor(bounds.y());
+        int right = (int) Math.ceil(bounds.right());
+        int bottom = (int) Math.ceil(bounds.bottom());
+        graphics.fill(left, top, right, bottom, 0x403A9BFF);
+    }
+
+    private void renderElementName(GuiGraphics graphics, HudElementDefinition definition, Bounds bounds) {
+        HudElementLayout layout = registry.layout(definition);
+        HudElementRuntime runtime = registry.runtime(definition.stableId());
+        int left = (int) Math.floor(bounds.x());
+        int top = (int) Math.floor(bounds.y());
+        int bottom = (int) Math.ceil(bounds.bottom());
+        String label = layout.displayName;
+        int labelWidth = font.width(label) + 5;
+        int labelX = Math.max(0, Math.min(width - labelWidth, left));
+        int above = top - 11;
+        int below = bottom + 2;
+        int labelY = above >= 21 ? above : Math.min(height - 10, below);
+        graphics.fill(labelX, labelY, labelX + labelWidth, labelY + 9, 0xD0121821);
+        graphics.drawString(font, label, labelX + 2, labelY + 1, 0xFF8FE8FF, false);
+        if (LayoutStore.get().debugMode) renderDebug(graphics, definition, runtime, bounds, labelX, labelY + 10);
+    }
+
+    private boolean currentlyRendered(HudElementDefinition definition) {
+        HudElementRuntime runtime = registry.runtime(definition.stableId());
+        return runtime != null && runtime.rendered()
+                && System.currentTimeMillis() - runtime.lastSeenMillis() < 250L;
+    }
+
+    private HudElementDefinition highlightedElement(int mouseX, int mouseY) {
+        HudElementDefinition selected = selectedId == null ? null : registry.definition(selectedId);
+        if (dragging) {
+            return selected != null && !registry.layout(selected).lockedToDefault ? selected : null;
+        }
+        if (mouseY <= 20 || mouseX <= LIST_WIDTH + 4 || mouseX >= width - PANEL_WIDTH - 4) return null;
+        if (selected != null && !registry.layout(selected).lockedToDefault
+                && editorBounds(selected).contains(mouseX, mouseY)) {
+            return selected;
+        }
+        List<HudElementDefinition> hovered = registry.at(mouseX, mouseY, width, height);
+        return hovered.isEmpty() ? null : hovered.getFirst();
     }
 
     private void renderDebug(GuiGraphics graphics, HudElementDefinition definition, HudElementRuntime runtime,
@@ -194,7 +245,7 @@ public final class HudEditorScreen extends Screen {
                 graphics.renderItem(LOCKED_ICON, x + LIST_WIDTH - 21, rowY - 1);
             }
             hitTargets.add(new HitTarget(x + 3, rowY, LIST_WIDTH - 6, 14,
-                    () -> select(definition.stableId())));
+                    () -> selectFromList(definition.stableId())));
             y += 16;
         }
     }
@@ -365,6 +416,23 @@ public final class HudEditorScreen extends Screen {
         y = stepper(graphics, x, y, contentWidth, "Opacity", numericValue("style.opacity." + selectedLayer,
                 () -> layer.opacity * 100.0, value -> layer.opacity = (float) (value / 100.0),
                 0.0, 100.0, 5.0, 0, "%"));
+        y = stepper(graphics, x, y, contentWidth, "Layer X", numericValue("style.offset_x." + selectedLayer,
+                () -> layer.offsetX, value -> layer.offsetX = value,
+                -4096.0, 4096.0, 1.0, 1, ""));
+        y = stepper(graphics, x, y, contentWidth, "Layer Y", numericValue("style.offset_y." + selectedLayer,
+                () -> layer.offsetY, value -> layer.offsetY = value,
+                -4096.0, 4096.0, 1.0, 1, ""));
+        y = stepper(graphics, x, y, contentWidth, "Layer width", numericValue("style.scale_x." + selectedLayer,
+                () -> layer.scaleX * 100.0, value -> layer.scaleX = value / 100.0,
+                5.0, 800.0, 5.0, 0, "%"));
+        y = stepper(graphics, x, y, contentWidth, "Layer height", numericValue("style.scale_y." + selectedLayer,
+                () -> layer.scaleY * 100.0, value -> layer.scaleY = value / 100.0,
+                5.0, 800.0, 5.0, 0, "%"));
+        button(graphics, x, y, contentWidth, 17, "Reset layer transform", false, () -> {
+            layer.resetTransform();
+            changed();
+        });
+        y += 21;
         y = stepper(graphics, x, y, contentWidth, "Border", numericValue("style.border",
                 () -> layout.bar.borderThickness, value -> layout.bar.borderThickness = (int) Math.round(value),
                 0.0, 32.0, 1.0, 0, ""));
@@ -666,7 +734,7 @@ public final class HudEditorScreen extends Screen {
         }
         List<HudElementDefinition> hits = registry.at(mouseX, mouseY, width, height);
         if (!hits.isEmpty()) {
-            select(hits.getFirst().stableId());
+            selectFromCanvas(hits.getFirst().stableId());
             HudElementLayout layout = selectedLayout();
             return beginElementInteraction(layout, mouseX, mouseY, button);
         }
@@ -737,6 +805,12 @@ public final class HudEditorScreen extends Screen {
             List<Bounds> others = new ArrayList<>();
             for (HudElementDefinition definition : registry.discovered()) {
                 if (definition.stableId().equals(selectedId)) continue;
+                HudElementLayout otherLayout = registry.layout(definition);
+                if (otherLayout.lockedToDefault) {
+                    Bounds lockedDefault = HudSnapTargets.lockedDefault(definition, otherLayout, width, height);
+                    if (lockedDefault != null) others.add(lockedDefault);
+                    continue;
+                }
                 HudElementRuntime runtime = registry.runtime(definition.stableId());
                 if (runtime != null && runtime.rendered() && runtime.bounds() != null) others.add(runtime.bounds());
             }
@@ -820,9 +894,42 @@ public final class HudEditorScreen extends Screen {
         return layout.resolvedBounds(width, height);
     }
 
-    private void select(String id) {
+    public boolean isListPreviewSelected(String id) {
+        return listPreviewSelection && id != null && id.equals(selectedId);
+    }
+
+    private void selectFromList(String id) {
+        select(id, true);
+    }
+
+    private void selectFromCanvas(String id) {
+        select(id, false);
+    }
+
+    private void select(String id, boolean fromList) {
         if (!id.equals(selectedId)) propertyScroll = 0;
         selectedId = id;
+        listPreviewSelection = fromList;
+        rememberedSelectedId = id;
+        rememberedListPreview = fromList;
+    }
+
+    private void revealSelectedRow() {
+        List<HudElementDefinition> definitions = new ArrayList<>(registry.discovered());
+        definitions.sort((left, right) -> Integer.compare(
+                elementListPriority(registry.layout(left)), elementListPriority(registry.layout(right))));
+        int selectedIndex = -1;
+        for (int index = 0; index < definitions.size(); index++) {
+            if (definitions.get(index).stableId().equals(selectedId)) {
+                selectedIndex = index;
+                break;
+            }
+        }
+        if (selectedIndex < 0) return;
+        int listTop = 26 + 41;
+        int visibleRows = Math.max(1, (height - 6 - listTop - 4) / 16);
+        if (selectedIndex < listScroll) listScroll = selectedIndex;
+        else if (selectedIndex >= listScroll + visibleRows) listScroll = selectedIndex - visibleRows + 1;
     }
 
     private void beginNumericEdit(NumericTarget target) {
@@ -861,7 +968,7 @@ public final class HudEditorScreen extends Screen {
         }
         return switch (page) {
             case BASIC -> 379;
-            case STYLE -> 185;
+            case STYLE -> 300;
             case TEXTURES -> 210;
             case TRAIL -> 185;
         };
@@ -920,15 +1027,15 @@ public final class HudEditorScreen extends Screen {
         return String.format(Locale.ROOT, "#%06X", color & 0x00FFFFFF);
     }
 
-    private static void outline(GuiGraphics graphics, Bounds bounds, int color, int thickness) {
-        int x = (int) Math.floor(bounds.x());
-        int y = (int) Math.floor(bounds.y());
-        int right = (int) Math.ceil(bounds.right());
-        int bottom = (int) Math.ceil(bounds.bottom());
-        graphics.fill(x, y, right, y + thickness, color);
-        graphics.fill(x, bottom - thickness, right, bottom, color);
-        graphics.fill(x, y, x + thickness, bottom, color);
-        graphics.fill(right - thickness, y, right, bottom, color);
+    private static void outlineOutside(GuiGraphics graphics, Bounds bounds, int color) {
+        int left = (int) Math.floor(bounds.x()) - 1;
+        int top = (int) Math.floor(bounds.y()) - 1;
+        int right = (int) Math.ceil(bounds.right()) + 1;
+        int bottom = (int) Math.ceil(bounds.bottom()) + 1;
+        graphics.fill(left, top, right, top + 1, color);
+        graphics.fill(left, bottom - 1, right, bottom, color);
+        graphics.fill(left, top + 1, left + 1, bottom - 1, color);
+        graphics.fill(right - 1, top + 1, right, bottom - 1, color);
     }
 
     private enum PropertyPage {

@@ -6,6 +6,7 @@ import com.cappleapple.myhudnotyours.bar.CustomBarRenderer;
 import com.cappleapple.myhudnotyours.bar.NumericBarSnapshot;
 import com.cappleapple.myhudnotyours.bar.NumericBarSource;
 import com.cappleapple.myhudnotyours.config.LayoutStore;
+import com.cappleapple.myhudnotyours.editor.HudEditorScreen;
 import com.cappleapple.myhudnotyours.model.Bounds;
 import com.cappleapple.myhudnotyours.model.HudElementLayout;
 import com.cappleapple.myhudnotyours.model.RenderMode;
@@ -46,6 +47,7 @@ public final class GenericLayerInterceptor {
         refreshKnownNativePosition(layerId, layout, graphics.guiWidth(), graphics.guiHeight());
         HudFrameTracker.begin(definition);
         active = new ActiveLayer(definition, layout, false, false);
+        boolean editorPreview = editorPreviewRequested(definition);
 
         // Untouched and reset elements are strict vanilla passthroughs. Bounds
         // are still observed for editor discovery, but rendering is never
@@ -54,7 +56,7 @@ public final class GenericLayerInterceptor {
         if (!layout.customized) return;
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (!layout.showInCreative && minecraft.player != null && minecraft.player.isCreative()) {
+        if (!editorPreview && !layout.showInCreative && minecraft.player != null && minecraft.player.isCreative()) {
             preserveVanillaBarSideEffects(event, definition, false);
             finishCanceled(graphics, false);
             event.setCanceled(true);
@@ -63,14 +65,14 @@ public final class GenericLayerInterceptor {
 
         NumericBarSource source = definition.semanticBar() ? BarSourceRegistry.get(layout.barSourceId) : null;
         NumericBarSnapshot snapshot = source == null ? null : source.snapshot(minecraft);
-        if (snapshot != null && BarVisibilityPolicy.hideForValue(layout, snapshot)) {
+        if (!editorPreview && snapshot != null && BarVisibilityPolicy.hideForValue(layout, snapshot)) {
             preserveVanillaBarSideEffects(event, definition, false);
             finishCanceled(graphics, false);
             event.setCanceled(true);
             return;
         }
 
-        if (layout.renderMode == RenderMode.HIDDEN) {
+        if (!editorPreview && layout.renderMode == RenderMode.HIDDEN) {
             preserveVanillaBarSideEffects(event, definition, false);
             finishCanceled(graphics, false);
             event.setCanceled(true);
@@ -78,9 +80,16 @@ public final class GenericLayerInterceptor {
         }
 
         if ((layout.renderMode == RenderMode.CUSTOM || layout.renderMode == RenderMode.BOSS_BAR) && source != null) {
-            preserveVanillaBarSideEffects(event, definition, snapshot != null && snapshot.active());
-            if (snapshot.active()) CustomBarRenderer.render(graphics, layout, snapshot);
-            finishCanceled(graphics, snapshot.active());
+            NumericBarSnapshot renderedSnapshot = snapshot;
+            if (editorPreview && snapshot != null && !snapshot.active()) {
+                renderedSnapshot = new NumericBarSnapshot(snapshot.current(), snapshot.minimum(), snapshot.maximum(),
+                        snapshot.displayName(), snapshot.icon(), true);
+            }
+            boolean rendered = renderedSnapshot != null && renderedSnapshot.active();
+            preserveVanillaBarSideEffects(event, definition, rendered);
+            if (rendered) CustomBarRenderer.render(graphics, layout, renderedSnapshot,
+                    event.getPartialTick().getGameTimeDeltaPartialTick(false));
+            finishCanceled(graphics, rendered);
             event.setCanceled(true);
             return;
         }
@@ -111,7 +120,8 @@ public final class GenericLayerInterceptor {
         ActiveLayer current = active;
         HudFrameTracker.FrameResult frame = HudFrameTracker.end();
         Bounds bounds = current.layout.resolvedBounds(graphics.guiWidth(), graphics.guiHeight());
-        REGISTRY.update(current.definition, bounds, order - 1, frame.textures(), rendered,
+        REGISTRY.update(current.definition, bounds, order - 1, frame.textures(),
+                rendered && frame.bounds() != null,
                 graphics.guiWidth(), graphics.guiHeight());
         active = null;
     }
@@ -161,6 +171,11 @@ public final class GenericLayerInterceptor {
                 Minecraft.getInstance().getWindow().getGuiScaledHeight()).x() - layout.nativeX) > 0.001
                 || Math.abs(layout.resolvedBounds(Minecraft.getInstance().getWindow().getGuiScaledWidth(),
                 Minecraft.getInstance().getWindow().getGuiScaledHeight()).y() - layout.nativeY) > 0.001;
+    }
+
+    private static boolean editorPreviewRequested(HudElementDefinition definition) {
+        return Minecraft.getInstance().screen instanceof HudEditorScreen editor
+                && editor.isListPreviewSelected(definition.stableId());
     }
 
     private static void preserveVanillaBarSideEffects(RenderGuiLayerEvent.Pre event,

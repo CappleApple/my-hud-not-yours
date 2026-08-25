@@ -2,6 +2,7 @@ package com.cappleapple.myhudnotyours.client;
 
 import com.cappleapple.myhudnotyours.MyHudNotYours;
 import com.cappleapple.myhudnotyours.bar.BarSourceRegistry;
+import com.cappleapple.myhudnotyours.bar.CustomBarRenderer;
 import com.cappleapple.myhudnotyours.config.LayoutStore;
 import com.cappleapple.myhudnotyours.discovery.GenericLayerInterceptor;
 import com.cappleapple.myhudnotyours.editor.HudEditorScreen;
@@ -62,6 +63,7 @@ public final class MyHudNotYoursClient {
 
     private static void clientTick(ClientTickEvent.Post event) {
         LayoutStore.tick();
+        CustomBarRenderer.clientTick();
         Minecraft minecraft = Minecraft.getInstance();
         if (autoOpenTextureBrowser && minecraft.player != null && minecraft.screen == null) {
             autoOpenTextureBrowser = false;
@@ -80,6 +82,7 @@ public final class MyHudNotYoursClient {
     }
 
     private static void loggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        CustomBarRenderer.clearTrailState();
         LayoutStore.saveNow();
     }
 }

@@ -1,5 +1,6 @@
 package com.cappleapple.myhudnotyours.bar;
 
+import com.cappleapple.myhudnotyours.config.LayoutStore;
 import com.cappleapple.myhudnotyours.model.BarLayerStyle;
 import com.cappleapple.myhudnotyours.model.BarStyle;
 import com.cappleapple.myhudnotyours.model.Bounds;
@@ -13,7 +14,9 @@ import com.cappleapple.myhudnotyours.model.TextureScaleMode;
 import com.cappleapple.myhudnotyours.texture.ManagedTextureResolver;
 import com.cappleapple.myhudnotyours.texture.TextureHandle;
 import com.mojang.blaze3d.systems.RenderSystem;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -27,7 +30,31 @@ public final class CustomBarRenderer {
     private CustomBarRenderer() {
     }
 
-    public static void render(GuiGraphics graphics, HudElementLayout layout, NumericBarSnapshot snapshot) {
+    public static void clientTick() {
+        Minecraft minecraft = Minecraft.getInstance();
+        Set<String> activeElementIds = new HashSet<>();
+        for (HudElementLayout layout : LayoutStore.get().elements.values()) {
+            if (!layout.customized || layout.lockedToDefault
+                    || (layout.renderMode != RenderMode.CUSTOM && layout.renderMode != RenderMode.BOSS_BAR)) {
+                continue;
+            }
+            NumericBarSource source = BarSourceRegistry.get(layout.barSourceId);
+            if (source == null) continue;
+            NumericBarSnapshot snapshot = source.snapshot(minecraft);
+            if (snapshot == null || !snapshot.active()) continue;
+            activeElementIds.add(layout.id);
+            TRAILS.tick(layout.id, snapshot.fraction(), layout.bar.trail.mode,
+                    layout.bar.trail.delayMillis, layout.bar.trail.catchUpMillis);
+        }
+        TRAILS.retainOnly(activeElementIds);
+    }
+
+    public static void clearTrailState() {
+        TRAILS.clear();
+    }
+
+    public static void render(GuiGraphics graphics, HudElementLayout layout, NumericBarSnapshot snapshot,
+                              float partialTick) {
         if (!snapshot.active()) return;
         Bounds bounds = layout.resolvedBounds(graphics.guiWidth(), graphics.guiHeight());
         int x = (int) Math.round(bounds.x());
@@ -35,73 +62,84 @@ public final class CustomBarRenderer {
         int width = Math.max(1, (int) Math.round(bounds.width()));
         int height = Math.max(1, (int) Math.round(bounds.height()));
         double value = snapshot.fraction();
-        long now = Util.getMillis();
-        double trail = TRAILS.sample(layout.id, value, now, layout.bar.trail.mode,
-                layout.bar.trail.delayMillis, layout.bar.trail.catchUpMillis);
+        double trail = TRAILS.render(layout.id, value, partialTick);
 
         RenderSystem.enableBlend();
         if (layout.renderMode == RenderMode.BOSS_BAR) {
-            renderBoss(graphics, layout.bar, x, y, width, height, value, trail);
+            renderBoss(graphics, layout.bar, x, y, width, height, value, trail, layout.scale);
         } else {
-            renderCustom(graphics, layout.bar, x, y, width, height, value, trail);
+            renderCustom(graphics, layout.bar, x, y, width, height, value, trail, layout.scale);
         }
         RenderSystem.disableBlend();
-        renderText(graphics, layout.bar, snapshot, x, y, width, height);
+        renderText(graphics, layout.bar, snapshot, x, y, width, height, layout.scale);
     }
 
     private static void renderCustom(GuiGraphics graphics, BarStyle style, int x, int y, int width, int height,
-                                     double value, double trail) {
-        drawLayer(graphics, style.background, x, y, width, height);
-        int border = Math.max(0, Math.min((int) Math.round(style.borderThickness), Math.min(width, height) / 2));
+                                     double value, double trail, double elementScale) {
+        drawLayer(graphics, style.background, x, y, width, height, elementScale);
+        int border = Math.max(0, Math.min((int) Math.round(style.borderThickness * elementScale),
+                Math.min(width, height) / 2));
         int innerX = x + border;
         int innerY = y + border;
         int innerWidth = Math.max(0, width - border * 2);
         int innerHeight = Math.max(0, height - border * 2);
-        drawLayer(graphics, style.empty, innerX, innerY, innerWidth, innerHeight);
+        drawLayer(graphics, style.empty, innerX, innerY, innerWidth, innerHeight, elementScale);
         if (trail > value) {
-            drawFraction(graphics, style.trail.layer, innerX, innerY, innerWidth, innerHeight, style.fillDirection, 0.0, trail);
-            drawFraction(graphics, style.filled, innerX, innerY, innerWidth, innerHeight, style.fillDirection, 0.0, value);
+            drawFraction(graphics, style.trail.layer, innerX, innerY, innerWidth, innerHeight,
+                    style.fillDirection, 0.0, trail, elementScale);
+            drawFraction(graphics, style.filled, innerX, innerY, innerWidth, innerHeight,
+                    style.fillDirection, 0.0, value, elementScale);
         } else {
-            drawFraction(graphics, style.filled, innerX, innerY, innerWidth, innerHeight, style.fillDirection, 0.0, value);
+            drawFraction(graphics, style.filled, innerX, innerY, innerWidth, innerHeight,
+                    style.fillDirection, 0.0, value, elementScale);
             if (trail < value) {
-                drawFraction(graphics, style.trail.layer, innerX, innerY, innerWidth, innerHeight, style.fillDirection, trail, value);
+                drawFraction(graphics, style.trail.layer, innerX, innerY, innerWidth, innerHeight,
+                        style.fillDirection, trail, value, elementScale);
             }
         }
         if (style.frame.mode == LayerMode.SOLID) {
-            drawSolidFrame(graphics, style.frame, x, y, width, height, Math.max(1, border));
+            drawSolidFrame(graphics, style.frame, x, y, width, height, Math.max(1, border), elementScale);
         } else {
-            drawLayer(graphics, style.frame, x, y, width, height);
+            drawLayer(graphics, style.frame, x, y, width, height, elementScale);
         }
     }
 
     private static void renderBoss(GuiGraphics graphics, BarStyle style, int x, int y, int width, int height,
-                                   double value, double trail) {
-        drawBossSprite(graphics, BOSS_BACKGROUND, x, y, width, height);
+                                   double value, double trail, double elementScale) {
+        LayerRect background = layerRect(style.background, x, y, width, height, elementScale);
+        drawBossSprite(graphics, BOSS_BACKGROUND, background.x, background.y, background.width, background.height);
         // The background and progress share a depth. Flush the background before
         // changing scissor/tint state so batching cannot replay it as a foreground draw.
         graphics.flush();
         if (trail > value) {
             tint(graphics, style.trail.layer);
-            drawBossFraction(graphics, x, y, width, height, style.fillDirection, 0.0, trail);
+            drawBossFraction(graphics, style.trail.layer, x, y, width, height,
+                    style.fillDirection, 0.0, trail, elementScale);
             resetTint(graphics);
-            drawBossFraction(graphics, x, y, width, height, style.fillDirection, 0.0, value);
+            drawBossFraction(graphics, style.filled, x, y, width, height,
+                    style.fillDirection, 0.0, value, elementScale);
         } else {
-            drawBossFraction(graphics, x, y, width, height, style.fillDirection, 0.0, value);
+            drawBossFraction(graphics, style.filled, x, y, width, height,
+                    style.fillDirection, 0.0, value, elementScale);
             if (trail < value) {
                 tint(graphics, style.trail.layer);
-                drawBossFraction(graphics, x, y, width, height, style.fillDirection, trail, value);
+                drawBossFraction(graphics, style.trail.layer, x, y, width, height,
+                        style.fillDirection, trail, value, elementScale);
                 resetTint(graphics);
             }
         }
     }
 
-    private static void drawBossFraction(GuiGraphics graphics, int x, int y, int width, int height,
-                                         FillDirection direction, double from, double to) {
-        Clip clip = clip(x, y, width, height, direction, from, to);
+    private static void drawBossFraction(GuiGraphics graphics, BarLayerStyle layer,
+                                         int x, int y, int width, int height,
+                                         FillDirection direction, double from, double to,
+                                         double elementScale) {
+        LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
+        Clip clip = clip(rect.x, rect.y, rect.width, rect.height, direction, from, to);
         if (clip.width <= 0 || clip.height <= 0) return;
         graphics.flush();
         graphics.enableScissor(clip.x, clip.y, clip.x + clip.width, clip.y + clip.height);
-        drawBossSprite(graphics, BOSS_PROGRESS, x, y, width, height);
+        drawBossSprite(graphics, BOSS_PROGRESS, rect.x, rect.y, rect.width, rect.height);
         graphics.flush();
         graphics.disableScissor();
     }
@@ -118,13 +156,17 @@ public final class CustomBarRenderer {
         graphics.pose().popPose();
     }
 
-    private static void drawFraction(GuiGraphics graphics, BarLayerStyle layer, int x, int y, int width, int height,
-                                     FillDirection direction, double from, double to) {
-        Clip clip = clip(x, y, width, height, direction, from, to);
+    private static void drawFraction(GuiGraphics graphics, BarLayerStyle layer,
+                                     int x, int y, int width, int height,
+                                     FillDirection direction, double from, double to,
+                                     double elementScale) {
+        if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
+        LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
+        Clip clip = clip(rect.x, rect.y, rect.width, rect.height, direction, from, to);
         if (clip.width <= 0 || clip.height <= 0) return;
         graphics.flush();
         graphics.enableScissor(clip.x, clip.y, clip.x + clip.width, clip.y + clip.height);
-        drawLayer(graphics, layer, x, y, width, height);
+        drawLayerAt(graphics, layer, rect.x, rect.y, rect.width, rect.height);
         graphics.flush();
         graphics.disableScissor();
     }
@@ -144,7 +186,26 @@ public final class CustomBarRenderer {
         };
     }
 
-    private static void drawLayer(GuiGraphics graphics, BarLayerStyle layer, int x, int y, int width, int height) {
+    private static LayerRect layerRect(BarLayerStyle layer, int x, int y, int width, int height,
+                                       double elementScale) {
+        if (layer == null) return new LayerRect(x, y, Math.max(1, width), Math.max(1, height));
+        Bounds transformed = BarLayerGeometry.resolve(layer, x, y, width, height, elementScale);
+        int left = (int) Math.round(transformed.x());
+        int top = (int) Math.round(transformed.y());
+        int right = (int) Math.round(transformed.right());
+        int bottom = (int) Math.round(transformed.bottom());
+        return new LayerRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
+    }
+
+    private static void drawLayer(GuiGraphics graphics, BarLayerStyle layer,
+                                  int x, int y, int width, int height, double elementScale) {
+        if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
+        LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
+        drawLayerAt(graphics, layer, rect.x, rect.y, rect.width, rect.height);
+    }
+
+    private static void drawLayerAt(GuiGraphics graphics, BarLayerStyle layer,
+                                    int x, int y, int width, int height) {
         if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
         if (layer.mode == LayerMode.SOLID) {
             graphics.fill(x, y, x + width, y + height, withOpacity(layer.color, layer.opacity));
@@ -214,7 +275,13 @@ public final class CustomBarRenderer {
     }
 
     private static void drawSolidFrame(GuiGraphics graphics, BarLayerStyle layer,
-                                       int x, int y, int width, int height, int thickness) {
+                                       int x, int y, int width, int height, int thickness,
+                                       double elementScale) {
+        LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
+        x = rect.x;
+        y = rect.y;
+        width = rect.width;
+        height = rect.height;
         int color = withOpacity(layer.color, layer.opacity);
         graphics.fill(x, y, x + width, y + Math.min(thickness, height), color);
         graphics.fill(x, Math.max(y, y + height - thickness), x + width, y + height, color);
@@ -223,7 +290,7 @@ public final class CustomBarRenderer {
     }
 
     private static void renderText(GuiGraphics graphics, BarStyle style, NumericBarSnapshot snapshot,
-                                   int x, int y, int width, int height) {
+                                   int x, int y, int width, int height, double elementScale) {
         if (style.text.mode == TextMode.OFF) return;
         String current = number(snapshot.current());
         String maximum = number(snapshot.maximum());
@@ -238,7 +305,7 @@ public final class CustomBarRenderer {
         };
         if (text.isEmpty()) return;
         Minecraft minecraft = Minecraft.getInstance();
-        float scale = Math.max(0.25F, Math.min(4.0F, style.text.scale));
+        float scale = Math.max(0.0625F, Math.min(16.0F, style.text.scale * (float) elementScale));
         float textWidth = minecraft.font.width(text) * scale;
         float textX = switch (style.text.alignment) {
             case LEFT -> x;
@@ -247,7 +314,8 @@ public final class CustomBarRenderer {
         };
         float textY = y + (height - minecraft.font.lineHeight * scale) / 2.0F;
         graphics.pose().pushPose();
-        graphics.pose().translate(textX + style.text.offsetX, textY + style.text.offsetY, 2.0F);
+        graphics.pose().translate(textX + style.text.offsetX * elementScale,
+                textY + style.text.offsetY * elementScale, 2.0F);
         graphics.pose().scale(scale, scale, 1.0F);
         graphics.drawString(minecraft.font, text, 0, 0, style.text.color, style.text.shadow);
         graphics.pose().popPose();
@@ -274,5 +342,8 @@ public final class CustomBarRenderer {
     }
 
     private record Clip(int x, int y, int width, int height) {
+    }
+
+    private record LayerRect(int x, int y, int width, int height) {
     }
 }

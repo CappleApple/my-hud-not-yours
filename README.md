@@ -18,10 +18,11 @@ config/myhudnotyours/hud-layout.json
 * Hold Shift while dragging for fine movement.
 * Middle-click an element, or use **Reset this element**, to restore its original placement and rendering.
 * Use the element list to select overlapping, hidden, or conditionally visible elements.
-* Hidden and conditional elements retain draggable configured bounds in the editor.
+* Selecting an element from the list requests a temporary unsuppressed preview without saving a configuration change. If its renderer still cannot produce pixels, its last-known/configured bounding box and name remain visible and draggable until selection changes.
+* Closing and reopening the editor during the same game run restores the last selected element, its preview behavior, and its visible row in the list. This selection is never written to disk.
 * Search elements by name, layer ID, namespace, or type.
 * Modified elements appear first in the element list with a yellow outline.
-* **Lock to default** completely excludes an element from HUD modification until unlocked.
+* **Lock to default** elements appear last with a cyan outline and barrier icon. They completely bypass renderer interception, show no world marker, and remain available as passive snap targets.
 * Anchor elements to any screen corner, edge center, or center.
 * Anchor-relative offsets remain stable across resolution, aspect-ratio, fullscreen, and GUI-scale changes.
 * Every supported element provides **Original** and **Hidden** modes.
@@ -31,21 +32,22 @@ config/myhudnotyours/hud-layout.json
 * Numeric fields support direct entry and mouse-wheel adjustment.
 * Color controls support a color wheel, hue and brightness adjustment, opacity, and direct `#RRGGBB` or `#RRGGBBAA` input.
 * Each bar remembers its most recently used colors.
+* Visible elements have no persistent selection box. Hovering an editable element or dragging the selected element temporarily shades its hitbox translucent blue and shows its name.
 
 The property panel is divided into:
 
 * **Basic** — mode, anchor, position, scale, source, dimensions, direction, and text.
-* **Style** — procedural and texture layers, colors, opacity, borders, and texture sizing.
+* **Style** — procedural and texture layers, colors, opacity, borders, texture sizing, and independent X/Y/width/height transforms for each bar layer.
 * **Texture** — Background, Frame, Filled, Empty, and Trail textures.
 * **Trail** — increase/decrease tracking, delay, catch-up duration, color, opacity, and texture.
 
-Custom bars work without textures and start as complete procedural solid-color bars.
+Element-level scaling composes over every layer-local transform, border, and text part. Custom bars work without textures and start as complete procedural solid-color bars.
 
 ## Texture Browser and Imports
 
 The built-in texture browser can search the currently active Minecraft, mod, resource-pack, and imported textures.
 
-Search matches namespaces, paths, and source-pack names. Texture previews include dimensions and animation state.
+Search matches namespaces, paths, and source-pack names. Texture previews include dimensions and animation state. Hovering a card shows its complete wrapped reference, namespace, path, source pack, category, resolved resource, texture-sheet and source-region dimensions, and animation state.
 
 **Import PNG** opens the platform file picker and copies the selected image into:
 
@@ -89,7 +91,7 @@ Vanilla health, armor, hunger, air, experience, mount health, and mount jump lay
 
 A bar's data source can also be changed manually in the editor.
 
-Conditional sources such as air or mount health do not render replacements while inactive.
+Conditional sources such as air or mount health do not render replacements while inactive, except for the temporary list-selection preview described above.
 
 ### Iron's Spells 'n Spellbooks
 
@@ -121,15 +123,15 @@ Available modes are:
 * Increase Only
 * Both
 
-The primary value updates immediately. The trail holds the previous value for the configured delay before smoothly catching up.
+The primary value updates immediately. Delay and catch-up timing advance exclusively on the 20 TPS client tick; configured milliseconds round up to whole 50 ms ticks, and render partial ticks only smooth between tick endpoints.
 
-Repeated qualifying changes restart the delay while preserving the outer trail value.
+Repeated qualifying changes restart the delay while preserving the outer trail value. In Decrease Only, healing below the retained high updates the live destination without canceling, restarting, or pausing the trail. Increase Only applies the same rule in reverse for damage above the retained low.
 
 ## HUD Discovery and Compatibility
 
 My HUD Not Yours automatically discovers named NeoForge GUI layers and uses their stable layer IDs to identify HUD elements.
 
-Unmodified elements remain visually untouched until explicitly changed in the editor.
+Unmodified and reset elements remain visually untouched until explicitly changed in the editor. Locked elements use an even stronger bypass that returns before renderer tracking, transforms, cancellation, replacement rendering, or stacking shims.
 
 Unknown mod HUD layers can often still be moved, scaled, hidden, and selected without dedicated compatibility code.
 
@@ -145,6 +147,8 @@ The editor's debug information can show:
 * Data source
 * Render order
 * Observed texture atlases
+
+Vanilla numeric layers share HUD stacking counters. Hidden or value-suppressed bars consume no row, while visible replacements preserve one row. A Custom or Boss Bar health replacement is normalized to one row regardless of boosted maximum health so armor and later overlays stack correctly.
 
 ### Technical Limits
 
@@ -164,7 +168,7 @@ Newly discovered HUD elements are added without deleting unknown configuration.
 
 Existing version-1 layouts are migrated automatically.
 
-Stored layouts include element identity, placement, scale, mode, visibility, bar source and dimensions, styles, textures, colors, 9-slice settings, and trail configuration.
+Stored layouts include element identity, placement, scale, mode, visibility, bar source and dimensions, styles, textures, layer-local transforms, colors, 9-slice settings, and trail configuration.
 
 ## Development
 

@@ -106,6 +106,7 @@ public final class HudElementLayout {
         bar.width = Math.max(8, Math.min(1024, bar.width));
         bar.height = Math.max(3, Math.min(512, bar.height));
         bar.borderThickness = Math.max(0, Math.min(bar.borderThickness, Math.min(bar.width, bar.height) / 2));
+        for (int layer = 0; layer < 5; layer++) bar.layer(layer).sanitizeTransform();
         bar.trail.delayMillis = Math.max(0, Math.min(10_000, bar.trail.delayMillis));
         bar.trail.catchUpMillis = Math.max(1, Math.min(10_000, bar.trail.catchUpMillis));
     }
