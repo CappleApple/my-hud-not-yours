@@ -26,6 +26,17 @@ class BarVisibilityPolicyTest {
         assertFalse(BarVisibilityPolicy.hideForValue(layout, partial));
     }
 
+    @Test
+    void absorptionPreventsAnOtherwiseEmptyHealthBarFromBeingHidden() {
+        HudElementLayout layout = new HudElementLayout();
+        layout.hideWhenEmpty = true;
+        NumericBarSnapshot absorbed = new NumericBarSnapshot(0.0, 0.0, 20.0,
+                "Health", null, true,
+                new HealthBarEffects(HealthBarEffects.VisualState.NORMAL, 4.0));
+
+        assertFalse(BarVisibilityPolicy.hideForValue(layout, absorbed));
+    }
+
     private static NumericBarSnapshot snapshot(double current) {
         return new NumericBarSnapshot(current, 0.0, 20.0, "Test", null, true);
     }

@@ -17,6 +17,7 @@ import com.cappleapple.myhudnotyours.model.LayerMode;
 import com.cappleapple.myhudnotyours.model.NineSliceMargins;
 import com.cappleapple.myhudnotyours.model.RenderMode;
 import com.cappleapple.myhudnotyours.model.TextureReference;
+import com.cappleapple.myhudnotyours.model.TextureScaleMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -350,6 +351,7 @@ public final class HudEditorScreen extends Screen {
             y = labeledCycle(graphics, x, y, contentWidth, "Source",
                     source == null ? layout.barSourceId : source.displayName(), () -> {
                         layout.barSourceId = BarSourceRegistry.nextId(layout.barSourceId);
+                        layout.resetObservedBarMaximum();
                         changed();
                     });
             y = labeledCycle(graphics, x, y, contentWidth, "When full",
@@ -368,6 +370,16 @@ public final class HudEditorScreen extends Screen {
             y = stepper(graphics, x, y, contentWidth, "Height", numericValue("basic.height",
                     () -> layout.bar.height, value -> layout.bar.height = (int) Math.round(value),
                     3.0, 512.0, 1.0, 0, ""));
+            y = stepper(graphics, x, y, contentWidth, "Width/Max", numericValue("basic.width_per_maximum",
+                    () -> layout.bar.widthPerMaximum, value -> {
+                        layout.bar.widthPerMaximum = value;
+                        layout.dynamicSizingChanged();
+                    }, 0.0, 1024.0, 0.25, 2, ""));
+            y = stepper(graphics, x, y, contentWidth, "Height/Max", numericValue("basic.height_per_maximum",
+                    () -> layout.bar.heightPerMaximum, value -> {
+                        layout.bar.heightPerMaximum = value;
+                        layout.dynamicSizingChanged();
+                    }, 0.0, 512.0, 0.25, 2, ""));
             y = labeledCycle(graphics, x, y, contentWidth, "Fill", pretty(layout.bar.fillDirection), () -> {
                 layout.bar.fillDirection = layout.bar.fillDirection.next(); changed();
             });
@@ -439,9 +451,15 @@ public final class HudEditorScreen extends Screen {
         y = labeledCycle(graphics, x, y, contentWidth, "Texture sizing", pretty(layer.textureScale), () -> {
             layer.textureScale = layer.textureScale.next(); changed();
         });
-        if (layer.textureScale == com.cappleapple.myhudnotyours.model.TextureScaleMode.NINE_SLICE) {
+        if (layer.textureScale == TextureScaleMode.NINE_SLICE) {
             y = stepper(graphics, x, y, contentWidth, "9-slice edges",
                     marginValue("style.margins." + selectedLayer, layer.margins));
+        } else if (layer.textureScale == TextureScaleMode.SEGMENTED) {
+            y = stepper(graphics, x, y, contentWidth, "Max/Seg",
+                    numericValue("style.maximum_per_segment",
+                            () -> layout.bar.maximumPerSegment,
+                            value -> layout.bar.maximumPerSegment = value,
+                            0.5, 1_000_000.0, 0.5, 1, ""));
         }
     }
 
@@ -471,7 +489,7 @@ public final class HudEditorScreen extends Screen {
         y = labeledCycle(graphics, x, y, contentWidth, "Sizing", pretty(selected.textureScale), () -> {
             selected.textureScale = selected.textureScale.next(); changed();
         });
-        if (selected.textureScale == com.cappleapple.myhudnotyours.model.TextureScaleMode.NINE_SLICE) {
+        if (selected.textureScale == TextureScaleMode.NINE_SLICE) {
             stepper(graphics, x, y, contentWidth, "Edges L/T/R/B",
                     marginValue("textures.margins." + selectedLayer, selected.margins));
         }
@@ -962,13 +980,13 @@ public final class HudEditorScreen extends Screen {
     private int propertyContentHeight(HudElementLayout layout) {
         if (!layout.semanticBar()) {
             if (page == PropertyPage.BASIC) {
-                return layout.classification == HudElementType.BAR ? 379 : 169;
+                return layout.classification == HudElementType.BAR ? 421 : 169;
             }
             return 30;
         }
         return switch (page) {
-            case BASIC -> 379;
-            case STYLE -> 300;
+            case BASIC -> 421;
+            case STYLE -> layout.bar.layer(selectedLayer).textureScale == TextureScaleMode.SEGMENTED ? 321 : 300;
             case TEXTURES -> 210;
             case TRAIL -> 185;
         };

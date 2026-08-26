@@ -65,6 +65,10 @@ public final class GenericLayerInterceptor {
 
         NumericBarSource source = definition.semanticBar() ? BarSourceRegistry.get(layout.barSourceId) : null;
         NumericBarSnapshot snapshot = source == null ? null : source.snapshot(minecraft);
+        if (snapshot != null && snapshot.active()
+                && layout.observeBarMaximum(snapshot.maximum() - snapshot.minimum())) {
+            LayoutStore.markDirty();
+        }
         if (!editorPreview && snapshot != null && BarVisibilityPolicy.hideForValue(layout, snapshot)) {
             preserveVanillaBarSideEffects(event, definition, false);
             finishCanceled(graphics, false);
@@ -83,7 +87,7 @@ public final class GenericLayerInterceptor {
             NumericBarSnapshot renderedSnapshot = snapshot;
             if (editorPreview && snapshot != null && !snapshot.active()) {
                 renderedSnapshot = new NumericBarSnapshot(snapshot.current(), snapshot.minimum(), snapshot.maximum(),
-                        snapshot.displayName(), snapshot.icon(), true);
+                        snapshot.displayName(), snapshot.icon(), true, snapshot.healthEffects());
             }
             boolean rendered = renderedSnapshot != null && renderedSnapshot.active();
             preserveVanillaBarSideEffects(event, definition, rendered);

@@ -176,4 +176,31 @@ class TrailAnimatorTest {
         }
         assertEquals(0.6, state.render(1.0F), 0.0001);
     }
+
+    @Test
+    void firstVisibleDamageTrailsFromSuppressedFullValue() {
+        TrailAnimator animator = new TrailAnimator();
+        animator.tick("health", 1.0, TrailMode.DECREASE_ONLY, 100, 500, true);
+        animator.tick("health", 1.0, TrailMode.DECREASE_ONLY, 100, 500, true);
+
+        animator.tick("health", 0.5, TrailMode.DECREASE_ONLY, 100, 500, false);
+
+        assertEquals(1.0, animator.render("health", 0.5, 1.0F), 0.0001);
+        animator.tick("health", 0.5, TrailMode.DECREASE_ONLY, 100, 500, false);
+        assertEquals(1.0, animator.render("health", 0.5, 1.0F), 0.0001);
+        animator.tick("health", 0.5, TrailMode.DECREASE_ONLY, 100, 500, false);
+        assertTrue(animator.render("health", 0.5, 1.0F) < 1.0);
+        assertTrue(animator.render("health", 0.5, 1.0F) > 0.5);
+    }
+
+    @Test
+    void firstVisibleGainTrailsFromSuppressedEmptyValue() {
+        TrailAnimator animator = new TrailAnimator();
+        animator.tick("mana", 0.0, TrailMode.INCREASE_ONLY, 0, 500, true);
+
+        animator.tick("mana", 0.5, TrailMode.INCREASE_ONLY, 0, 500, false);
+
+        double trail = animator.render("mana", 0.5, 1.0F);
+        assertTrue(trail > 0.0 && trail < 0.5);
+    }
 }

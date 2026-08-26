@@ -1,5 +1,7 @@
 package com.cappleapple.myhudnotyours.model;
 
+import com.cappleapple.myhudnotyours.bar.BarMaximumGeometry;
+
 public final class HudElementLayout {
     public String id = "";
     public String displayName = "Unknown HUD Element";
@@ -28,6 +30,8 @@ public final class HudElementLayout {
     public double nativeHeight = 12.0;
     public int nativeScreenWidth = 0;
     public int nativeScreenHeight = 0;
+    /** Last live maximum sampled from the semantic source; never serialized. */
+    public transient double observedBarMaximum = -1.0;
 
     public boolean semanticBar() {
         return classification == HudElementType.BAR && barSourceId != null && !barSourceId.isBlank();
@@ -36,11 +40,39 @@ public final class HudElementLayout {
     public Bounds resolvedBounds(int screenWidth, int screenHeight) {
         double x = anchor.x(screenWidth) + offsetX;
         double y = anchor.y(screenHeight) + offsetY;
-        double width = (renderMode == RenderMode.CUSTOM || renderMode == RenderMode.BOSS_BAR)
-                ? bar.width * scale : nativeWidth * scale;
-        double height = (renderMode == RenderMode.CUSTOM || renderMode == RenderMode.BOSS_BAR)
-                ? bar.height * scale : nativeHeight * scale;
+        boolean replacement = renderMode == RenderMode.CUSTOM || renderMode == RenderMode.BOSS_BAR;
+        double barWidth = BarMaximumGeometry.size(bar.width, bar.widthPerMaximum,
+                bar.sizeBaselineMaximum, observedBarMaximum);
+        double barHeight = BarMaximumGeometry.size(bar.height, bar.heightPerMaximum,
+                bar.sizeBaselineMaximum, observedBarMaximum);
+        double width = replacement ? barWidth * scale : nativeWidth * scale;
+        double height = replacement ? barHeight * scale : nativeHeight * scale;
         return new Bounds(x, y, width, height);
+    }
+
+    /** Returns true when a missing persisted baseline was initialized. */
+    public boolean observeBarMaximum(double maximumRange) {
+        if (!Double.isFinite(maximumRange) || maximumRange <= 0.0) return false;
+        observedBarMaximum = maximumRange;
+        if ((bar.widthPerMaximum > 0.0 || bar.heightPerMaximum > 0.0)
+                && bar.sizeBaselineMaximum <= 0.0) {
+            bar.sizeBaselineMaximum = maximumRange;
+            return true;
+        }
+        return false;
+    }
+
+    public void dynamicSizingChanged() {
+        if (bar.widthPerMaximum <= 0.0 && bar.heightPerMaximum <= 0.0) {
+            bar.sizeBaselineMaximum = -1.0;
+        } else if (bar.sizeBaselineMaximum <= 0.0 && observedBarMaximum > 0.0) {
+            bar.sizeBaselineMaximum = observedBarMaximum;
+        }
+    }
+
+    public void resetObservedBarMaximum() {
+        observedBarMaximum = -1.0;
+        bar.sizeBaselineMaximum = -1.0;
     }
 
     public void initializeFrom(Bounds nativeBounds, int screenWidth, int screenHeight) {
@@ -105,6 +137,15 @@ public final class HudElementLayout {
         nativeHeight = Math.max(1.0, nativeHeight);
         bar.width = Math.max(8, Math.min(1024, bar.width));
         bar.height = Math.max(3, Math.min(512, bar.height));
+        if (!Double.isFinite(bar.maximumPerSegment)) bar.maximumPerSegment = 2.0;
+        bar.maximumPerSegment = Math.max(0.5, Math.min(1_000_000.0, bar.maximumPerSegment));
+        if (!Double.isFinite(bar.widthPerMaximum)) bar.widthPerMaximum = 0.0;
+        if (!Double.isFinite(bar.heightPerMaximum)) bar.heightPerMaximum = 0.0;
+        bar.widthPerMaximum = Math.max(0.0, Math.min(1024.0, bar.widthPerMaximum));
+        bar.heightPerMaximum = Math.max(0.0, Math.min(512.0, bar.heightPerMaximum));
+        if (!Double.isFinite(bar.sizeBaselineMaximum) || bar.sizeBaselineMaximum <= 0.0) {
+            bar.sizeBaselineMaximum = -1.0;
+        }
         bar.borderThickness = Math.max(0, Math.min(bar.borderThickness, Math.min(bar.width, bar.height) / 2));
         for (int layer = 0; layer < 5; layer++) bar.layer(layer).sanitizeTransform();
         bar.trail.delayMillis = Math.max(0, Math.min(10_000, bar.trail.delayMillis));

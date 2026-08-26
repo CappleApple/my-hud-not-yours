@@ -16,8 +16,13 @@ public final class TrailAnimator {
 
     public void tick(String elementId, double value, TrailMode mode,
                      int delayMillis, int catchUpMillis) {
+        tick(elementId, value, mode, delayMillis, catchUpMillis, false);
+    }
+
+    public void tick(String elementId, double value, TrailMode mode,
+                     int delayMillis, int catchUpMillis, boolean valueSuppressed) {
         states.computeIfAbsent(elementId, ignored -> new TrailState())
-                .tick(value, mode, delayMillis, catchUpMillis);
+                .tick(value, mode, delayMillis, catchUpMillis, valueSuppressed);
     }
 
     public double render(String elementId, double fallbackValue, float partialTick) {
@@ -51,9 +56,37 @@ public final class TrailAnimator {
         private int delayTicksRemaining;
         private int catchTicksElapsed;
         private int catchTicksTotal = 1;
+        private boolean valueSuppressed;
+        private double suppressedValue;
 
         /** Advances this state exactly once for one client tick. */
         public void tick(double value, TrailMode nextMode, int delayMillis, int catchUpMillis) {
+            tick(value, nextMode, delayMillis, catchUpMillis, false);
+        }
+
+        /**
+         * A value-hidden endpoint remains a real trail sample. Reappearing from
+         * that endpoint is explicitly rebased before processing the live value,
+         * preventing a missing/retained state from snapping the first change.
+         */
+        public void tick(double value, TrailMode nextMode, int delayMillis, int catchUpMillis,
+                         boolean nextValueSuppressed) {
+            if (nextValueSuppressed) {
+                tickValue(value, nextMode, delayMillis, catchUpMillis);
+                valueSuppressed = true;
+                suppressedValue = value;
+                return;
+            }
+            if (valueSuppressed) {
+                valueSuppressed = false;
+                initialized = true;
+                mode = nextMode;
+                snapTo(suppressedValue);
+            }
+            tickValue(value, nextMode, delayMillis, catchUpMillis);
+        }
+
+        private void tickValue(double value, TrailMode nextMode, int delayMillis, int catchUpMillis) {
             if (!initialized) {
                 initialized = true;
                 mode = nextMode;

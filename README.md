@@ -30,6 +30,7 @@ config/myhudnotyours/hud-layout.json
 * Elements can be independently shown or suppressed in creative mode.
 * Data-linked bars can hide themselves when empty or full.
 * Numeric fields support direct entry and mouse-wheel adjustment.
+* Custom bars can grow in width and/or height as their semantic maximum increases.
 * Color controls support a color wheel, hue and brightness adjustment, opacity, and direct `#RRGGBB` or `#RRGGBBAA` input.
 * Each bar remembers its most recently used colors.
 * Visible elements have no persistent selection box. Hovering an editable element or dragging the selected element temporarily shades its hitbox translucent blue and shows its name.
@@ -70,7 +71,10 @@ Texture layers support:
 
 * Stretch
 * Tile
+* Segmented, with one repeated texture cell per configurable amount of the semantic maximum
 * 9-slice with configurable left, top, right, and bottom margins
+
+**Max/Seg** appears in the Style panel whenever the selected layer uses Segmented sizing. The default is `2.0`, producing ten cells for a source maximum of 20 and twenty cells for a source maximum of 40. Current value, health absorption, and delayed trails change how those cells are filled or overlaid; only the semantic maximum changes the number of cells.
 
 If a configured texture disappears, only that texture layer is skipped.
 
@@ -89,7 +93,11 @@ Built-in sources include:
 
 Vanilla health, armor, hunger, air, experience, mount health, and mount jump layers are linked automatically.
 
+Custom and Boss Bar health replacements preserve vanilla health presentation state. Poison, wither, and full freezing tint the ordinary-health portion using vanilla's precedence, while absorption occupies a distinct overlay in the configured fill direction. Withered absorption uses the wither treatment instead of gold, matching vanilla hearts. These overlays reuse the configured Filled layer texture, opacity, scale mode, and layer-local transform; numeric text continues to report ordinary health and maximum health.
+
 A bar's data source can also be changed manually in the editor.
+
+The Basic panel provides **Width/Max** and **Height/Max**. Each value is the number of unscaled pixels added per one point that the semantic maximum rises above the maximum observed when dynamic sizing was first enabled. Both default to `0`, so existing bars remain fixed-size. Returning both values to `0` clears the baseline; enabling either again captures the then-current maximum. Changing the bar source also captures a fresh baseline.
 
 Conditional sources such as air or mount health do not render replacements while inactive, except for the temporary list-selection preview described above.
 
@@ -126,6 +134,8 @@ Available modes are:
 The primary value updates immediately. Delay and catch-up timing advance exclusively on the 20 TPS client tick; configured milliseconds round up to whole 50 ms ticks, and render partial ticks only smooth between tick endpoints.
 
 Repeated qualifying changes restart the delay while preserving the outer trail value. In Decrease Only, healing below the retained high updates the live destination without canceling, restarting, or pausing the trail. Increase Only applies the same rule in reverse for damage above the retained low.
+
+When a bar is configured to hide at full or empty, that hidden endpoint remains a tick-sampled trail value. Its first visible change therefore trails from full or empty immediately instead of using the newly visible value as a fresh baseline.
 
 ## HUD Discovery and Compatibility
 

@@ -10,6 +10,13 @@ public final class BarStyle {
     public int height = 12;
     public int borderThickness = 1;
     public int cornerRadius = 0;
+    /** Amount of a semantic source's maximum range represented by one segmented texture cell. */
+    public double maximumPerSegment = 2.0;
+    /** Extra unscaled pixels added for each maximum-stat point above the captured baseline. */
+    public double widthPerMaximum = 0.0;
+    public double heightPerMaximum = 0.0;
+    /** Persisted maximum present when dynamic sizing was first enabled; -1 means uncaptured. */
+    public double sizeBaselineMaximum = -1.0;
     public FillDirection fillDirection = FillDirection.LEFT_TO_RIGHT;
     public BarLayerStyle background = BarLayerStyle.solid(0xCC080A0E);
     public BarLayerStyle frame = BarLayerStyle.solid(0xFFE0E4EA);

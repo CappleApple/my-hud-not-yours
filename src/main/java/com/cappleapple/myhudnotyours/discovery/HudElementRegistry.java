@@ -53,6 +53,7 @@ public final class HudElementRegistry {
         String source = definition.semanticSourceId();
         if (source != null && !source.isBlank() && !source.equals(layout.barSourceId)) {
             layout.barSourceId = source;
+            layout.resetObservedBarMaximum();
             applySourceColor(layout);
             changed = true;
         }

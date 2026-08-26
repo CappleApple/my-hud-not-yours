@@ -25,6 +25,10 @@ import net.minecraft.resources.ResourceLocation;
 public final class CustomBarRenderer {
     private static final ResourceLocation BOSS_BACKGROUND = ResourceLocation.withDefaultNamespace("boss_bar/red_background");
     private static final ResourceLocation BOSS_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/red_progress");
+    private static final ResourceLocation BOSS_GREEN_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/green_progress");
+    private static final ResourceLocation BOSS_BLUE_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/blue_progress");
+    private static final ResourceLocation BOSS_YELLOW_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/yellow_progress");
+    private static final ResourceLocation BOSS_WHITE_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/white_progress");
     private static final TrailAnimator TRAILS = new TrailAnimator();
 
     private CustomBarRenderer() {
@@ -41,10 +45,16 @@ public final class CustomBarRenderer {
             NumericBarSource source = BarSourceRegistry.get(layout.barSourceId);
             if (source == null) continue;
             NumericBarSnapshot snapshot = source.snapshot(minecraft);
-            if (snapshot == null || !snapshot.active()) continue;
+            if (snapshot == null) continue;
+            if (snapshot.active()
+                    && layout.observeBarMaximum(snapshot.maximum() - snapshot.minimum())) {
+                LayoutStore.markDirty();
+            }
+            if (!snapshot.active()) continue;
             activeElementIds.add(layout.id);
-            TRAILS.tick(layout.id, snapshot.fraction(), layout.bar.trail.mode,
-                    layout.bar.trail.delayMillis, layout.bar.trail.catchUpMillis);
+            TRAILS.tick(layout.id, snapshot.renderFraction(), layout.bar.trail.mode,
+                    layout.bar.trail.delayMillis, layout.bar.trail.catchUpMillis,
+                    BarVisibilityPolicy.hideForValue(layout, snapshot));
         }
         TRAILS.retainOnly(activeElementIds);
     }
@@ -61,50 +71,57 @@ public final class CustomBarRenderer {
         int y = (int) Math.round(bounds.y());
         int width = Math.max(1, (int) Math.round(bounds.width()));
         int height = Math.max(1, (int) Math.round(bounds.height()));
-        double value = snapshot.fraction();
+        double value = snapshot.renderFraction();
         double trail = TRAILS.render(layout.id, value, partialTick);
 
         RenderSystem.enableBlend();
         if (layout.renderMode == RenderMode.BOSS_BAR) {
-            renderBoss(graphics, layout.bar, x, y, width, height, value, trail, layout.scale);
+            renderBoss(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
         } else {
-            renderCustom(graphics, layout.bar, x, y, width, height, value, trail, layout.scale);
+            renderCustom(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
         }
         RenderSystem.disableBlend();
         renderText(graphics, layout.bar, snapshot, x, y, width, height, layout.scale);
     }
 
-    private static void renderCustom(GuiGraphics graphics, BarStyle style, int x, int y, int width, int height,
+    private static void renderCustom(GuiGraphics graphics, BarStyle style, NumericBarSnapshot snapshot,
+                                     int x, int y, int width, int height,
                                      double value, double trail, double elementScale) {
-        drawLayer(graphics, style.background, x, y, width, height, elementScale);
+        SegmentSpec segments = segmentSpec(style, snapshot);
+        drawLayer(graphics, style.background, x, y, width, height, elementScale, segments);
         int border = Math.max(0, Math.min((int) Math.round(style.borderThickness * elementScale),
                 Math.min(width, height) / 2));
         int innerX = x + border;
         int innerY = y + border;
         int innerWidth = Math.max(0, width - border * 2);
         int innerHeight = Math.max(0, height - border * 2);
-        drawLayer(graphics, style.empty, innerX, innerY, innerWidth, innerHeight, elementScale);
+        drawLayer(graphics, style.empty, innerX, innerY, innerWidth, innerHeight, elementScale, segments);
         if (trail > value) {
             drawFraction(graphics, style.trail.layer, innerX, innerY, innerWidth, innerHeight,
-                    style.fillDirection, 0.0, trail, elementScale);
+                    style.fillDirection, 0.0, trail, elementScale, segments);
             drawFraction(graphics, style.filled, innerX, innerY, innerWidth, innerHeight,
-                    style.fillDirection, 0.0, value, elementScale);
+                    style.fillDirection, 0.0, value, elementScale, segments);
+            drawHealthEffects(graphics, style, snapshot, innerX, innerY, innerWidth, innerHeight,
+                    elementScale, segments);
         } else {
             drawFraction(graphics, style.filled, innerX, innerY, innerWidth, innerHeight,
-                    style.fillDirection, 0.0, value, elementScale);
+                    style.fillDirection, 0.0, value, elementScale, segments);
+            drawHealthEffects(graphics, style, snapshot, innerX, innerY, innerWidth, innerHeight,
+                    elementScale, segments);
             if (trail < value) {
                 drawFraction(graphics, style.trail.layer, innerX, innerY, innerWidth, innerHeight,
-                        style.fillDirection, trail, value, elementScale);
+                        style.fillDirection, trail, value, elementScale, segments);
             }
         }
         if (style.frame.mode == LayerMode.SOLID) {
             drawSolidFrame(graphics, style.frame, x, y, width, height, Math.max(1, border), elementScale);
         } else {
-            drawLayer(graphics, style.frame, x, y, width, height, elementScale);
+            drawLayer(graphics, style.frame, x, y, width, height, elementScale, segments);
         }
     }
 
-    private static void renderBoss(GuiGraphics graphics, BarStyle style, int x, int y, int width, int height,
+    private static void renderBoss(GuiGraphics graphics, BarStyle style, NumericBarSnapshot snapshot,
+                                   int x, int y, int width, int height,
                                    double value, double trail, double elementScale) {
         LayerRect background = layerRect(style.background, x, y, width, height, elementScale);
         drawBossSprite(graphics, BOSS_BACKGROUND, background.x, background.y, background.width, background.height);
@@ -118,9 +135,11 @@ public final class CustomBarRenderer {
             resetTint(graphics);
             drawBossFraction(graphics, style.filled, x, y, width, height,
                     style.fillDirection, 0.0, value, elementScale);
+            drawBossHealthEffects(graphics, style, snapshot, x, y, width, height, elementScale);
         } else {
             drawBossFraction(graphics, style.filled, x, y, width, height,
                     style.fillDirection, 0.0, value, elementScale);
+            drawBossHealthEffects(graphics, style, snapshot, x, y, width, height, elementScale);
             if (trail < value) {
                 tint(graphics, style.trail.layer);
                 drawBossFraction(graphics, style.trail.layer, x, y, width, height,
@@ -128,6 +147,87 @@ public final class CustomBarRenderer {
                 resetTint(graphics);
             }
         }
+    }
+
+    private static void drawHealthEffects(GuiGraphics graphics, BarStyle style, NumericBarSnapshot snapshot,
+                                          int x, int y, int width, int height, double elementScale,
+                                          SegmentSpec segments) {
+        HealthBarEffects effects = snapshot.healthEffects();
+        if (effects == null) return;
+        double healthEnd = snapshot.healthRenderFraction();
+        int healthColor = effects.healthOverlayColor();
+        if (healthColor != 0 && healthEnd > 0.0) {
+            drawTintedFraction(graphics, style.filled, x, y, width, height,
+                    style.fillDirection, 0.0, healthEnd, healthColor, elementScale, segments);
+        }
+        double totalEnd = snapshot.renderFraction();
+        double absorptionStart = snapshot.absorptionRenderStartFraction();
+        if (effects.absorption() > 0.0 && totalEnd > absorptionStart) {
+            drawTintedFraction(graphics, style.filled, x, y, width, height,
+                    style.fillDirection, absorptionStart, totalEnd,
+                    effects.absorptionOverlayColor(), elementScale, segments);
+        }
+    }
+
+    private static void drawBossHealthEffects(GuiGraphics graphics, BarStyle style,
+                                              NumericBarSnapshot snapshot,
+                                              int x, int y, int width, int height,
+                                              double elementScale) {
+        HealthBarEffects effects = snapshot.healthEffects();
+        if (effects == null) return;
+        double healthEnd = snapshot.healthRenderFraction();
+        int healthColor = effects.healthOverlayColor();
+        if (healthColor != 0 && healthEnd > 0.0) {
+            drawBossTintedFraction(graphics, style.filled, x, y, width, height,
+                    style.fillDirection, 0.0, healthEnd, healthColor, elementScale);
+        }
+        double totalEnd = snapshot.renderFraction();
+        double absorptionStart = snapshot.absorptionRenderStartFraction();
+        if (effects.absorption() > 0.0 && totalEnd > absorptionStart) {
+            drawBossTintedFraction(graphics, style.filled, x, y, width, height,
+                    style.fillDirection, absorptionStart, totalEnd,
+                    effects.absorptionOverlayColor(), elementScale);
+        }
+    }
+
+    private static void drawTintedFraction(GuiGraphics graphics, BarLayerStyle layer,
+                                           int x, int y, int width, int height,
+                                           FillDirection direction, double from, double to,
+                                           int tintColor, double elementScale, SegmentSpec segments) {
+        if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
+        LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
+        Clip clip = clip(rect.x, rect.y, rect.width, rect.height, direction, from, to);
+        if (clip.width <= 0 || clip.height <= 0) return;
+        graphics.flush();
+        graphics.enableScissor(clip.x, clip.y, clip.x + clip.width, clip.y + clip.height);
+        drawLayerAtTinted(graphics, layer, rect.x, rect.y, rect.width, rect.height, tintColor, segments);
+        graphics.flush();
+        graphics.disableScissor();
+    }
+
+    private static void drawBossTintedFraction(GuiGraphics graphics, BarLayerStyle layer,
+                                               int x, int y, int width, int height,
+                                               FillDirection direction, double from, double to,
+                                               int tintColor, double elementScale) {
+        LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
+        Clip clip = clip(rect.x, rect.y, rect.width, rect.height, direction, from, to);
+        if (clip.width <= 0 || clip.height <= 0) return;
+        graphics.flush();
+        graphics.enableScissor(clip.x, clip.y, clip.x + clip.width, clip.y + clip.height);
+        ResourceLocation sprite = bossEffectSprite(tintColor);
+        int spriteTint = tintColor == HealthBarEffects.WITHER_OVERLAY ? tintColor : 0xFFFFFFFF;
+        tint(graphics, spriteTint, layer == null ? 1.0F : layer.opacity);
+        drawBossSprite(graphics, sprite, rect.x, rect.y, rect.width, rect.height);
+        graphics.flush();
+        resetTint(graphics);
+        graphics.disableScissor();
+    }
+
+    private static ResourceLocation bossEffectSprite(int tintColor) {
+        if (tintColor == HealthBarEffects.POISON_OVERLAY) return BOSS_GREEN_PROGRESS;
+        if (tintColor == HealthBarEffects.FROZEN_OVERLAY) return BOSS_BLUE_PROGRESS;
+        if (tintColor == HealthBarEffects.ABSORPTION_OVERLAY) return BOSS_YELLOW_PROGRESS;
+        return BOSS_WHITE_PROGRESS;
     }
 
     private static void drawBossFraction(GuiGraphics graphics, BarLayerStyle layer,
@@ -159,14 +259,14 @@ public final class CustomBarRenderer {
     private static void drawFraction(GuiGraphics graphics, BarLayerStyle layer,
                                      int x, int y, int width, int height,
                                      FillDirection direction, double from, double to,
-                                     double elementScale) {
+                                     double elementScale, SegmentSpec segments) {
         if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
         LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
         Clip clip = clip(rect.x, rect.y, rect.width, rect.height, direction, from, to);
         if (clip.width <= 0 || clip.height <= 0) return;
         graphics.flush();
         graphics.enableScissor(clip.x, clip.y, clip.x + clip.width, clip.y + clip.height);
-        drawLayerAt(graphics, layer, rect.x, rect.y, rect.width, rect.height);
+        drawLayerAt(graphics, layer, rect.x, rect.y, rect.width, rect.height, segments);
         graphics.flush();
         graphics.disableScissor();
     }
@@ -198,14 +298,15 @@ public final class CustomBarRenderer {
     }
 
     private static void drawLayer(GuiGraphics graphics, BarLayerStyle layer,
-                                  int x, int y, int width, int height, double elementScale) {
+                                  int x, int y, int width, int height, double elementScale,
+                                  SegmentSpec segments) {
         if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
         LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
-        drawLayerAt(graphics, layer, rect.x, rect.y, rect.width, rect.height);
+        drawLayerAt(graphics, layer, rect.x, rect.y, rect.width, rect.height, segments);
     }
 
     private static void drawLayerAt(GuiGraphics graphics, BarLayerStyle layer,
-                                    int x, int y, int width, int height) {
+                                    int x, int y, int width, int height, SegmentSpec segments) {
         if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
         if (layer.mode == LayerMode.SOLID) {
             graphics.fill(x, y, x + width, y + height, withOpacity(layer.color, layer.opacity));
@@ -218,6 +319,28 @@ public final class CustomBarRenderer {
             case STRETCH -> blit(graphics, handle, x, y, width, height,
                     handle.sourceX(), handle.sourceY(), handle.sourceWidth(), handle.sourceHeight());
             case TILE -> tile(graphics, handle, x, y, width, height);
+            case SEGMENTED -> segmented(graphics, handle, x, y, width, height, segments);
+            case NINE_SLICE -> nineSlice(graphics, handle, layer, x, y, width, height);
+        }
+        resetTint(graphics);
+    }
+
+    private static void drawLayerAtTinted(GuiGraphics graphics, BarLayerStyle layer,
+                                          int x, int y, int width, int height, int tintColor,
+                                          SegmentSpec segments) {
+        if (layer == null || layer.mode == LayerMode.NONE || width <= 0 || height <= 0) return;
+        if (layer.mode == LayerMode.SOLID) {
+            graphics.fill(x, y, x + width, y + height, withOpacity(tintColor, layer.opacity));
+            return;
+        }
+        TextureHandle handle = ManagedTextureResolver.get().resolve(layer.texture, Util.getMillis());
+        if (handle == null) return;
+        tint(graphics, tintColor, layer.opacity);
+        switch (layer.textureScale) {
+            case STRETCH -> blit(graphics, handle, x, y, width, height,
+                    handle.sourceX(), handle.sourceY(), handle.sourceWidth(), handle.sourceHeight());
+            case TILE -> tile(graphics, handle, x, y, width, height);
+            case SEGMENTED -> segmented(graphics, handle, x, y, width, height, segments);
             case NINE_SLICE -> nineSlice(graphics, handle, layer, x, y, width, height);
         }
         resetTint(graphics);
@@ -234,6 +357,32 @@ public final class CustomBarRenderer {
                         handle.sourceX(), handle.sourceY(), pieceWidth, pieceHeight);
             }
         }
+    }
+
+    private static void segmented(GuiGraphics graphics, TextureHandle handle,
+                                  int x, int y, int width, int height, SegmentSpec spec) {
+        int axisLength = spec.vertical ? height : width;
+        int visibleCount = Math.max(1, Math.min(spec.count, axisLength));
+        for (int index = 0; index < visibleCount; index++) {
+            int start = BarSegmentGeometry.cellStart(axisLength, index, visibleCount);
+            int end = BarSegmentGeometry.cellEnd(axisLength, index, visibleCount);
+            int cellSize = end - start;
+            if (cellSize <= 0) continue;
+            if (spec.vertical) {
+                blit(graphics, handle, x, y + start, width, cellSize,
+                        handle.sourceX(), handle.sourceY(), handle.sourceWidth(), handle.sourceHeight());
+            } else {
+                blit(graphics, handle, x + start, y, cellSize, height,
+                        handle.sourceX(), handle.sourceY(), handle.sourceWidth(), handle.sourceHeight());
+            }
+        }
+    }
+
+    private static SegmentSpec segmentSpec(BarStyle style, NumericBarSnapshot snapshot) {
+        int count = BarSegmentGeometry.segmentCount(snapshot, style.maximumPerSegment);
+        boolean vertical = style.fillDirection == FillDirection.TOP_TO_BOTTOM
+                || style.fillDirection == FillDirection.BOTTOM_TO_TOP;
+        return new SegmentSpec(count, vertical);
     }
 
     private static void nineSlice(GuiGraphics graphics, TextureHandle handle, BarLayerStyle layer,
@@ -332,9 +481,12 @@ public final class CustomBarRenderer {
     }
 
     private static void tint(GuiGraphics graphics, BarLayerStyle layer) {
-        int color = layer.color;
+        tint(graphics, layer.color, layer.opacity);
+    }
+
+    private static void tint(GuiGraphics graphics, int color, float opacity) {
         graphics.setColor(((color >> 16) & 0xFF) / 255.0F, ((color >> 8) & 0xFF) / 255.0F,
-                (color & 0xFF) / 255.0F, ((color >>> 24) & 0xFF) / 255.0F * layer.opacity);
+                (color & 0xFF) / 255.0F, ((color >>> 24) & 0xFF) / 255.0F * opacity);
     }
 
     private static void resetTint(GuiGraphics graphics) {
@@ -345,5 +497,8 @@ public final class CustomBarRenderer {
     }
 
     private record LayerRect(int x, int y, int width, int height) {
+    }
+
+    private record SegmentSpec(int count, boolean vertical) {
     }
 }

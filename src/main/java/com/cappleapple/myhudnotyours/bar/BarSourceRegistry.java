@@ -24,7 +24,9 @@ public final class BarSourceRegistry {
         register(simple("minecraft:health", "Health", minecraft -> {
             LocalPlayer player = minecraft.player;
             return player == null ? inactive("Health")
-                    : active(player.getHealth(), 0.0, player.getMaxHealth(), "Health");
+                    : new NumericBarSnapshot(player.getHealth(), 0.0,
+                            Math.max(0.0001, player.getMaxHealth()), "Health", null, true,
+                            HealthBarEffects.from(player));
         }));
         register(simple("minecraft:absorption", "Absorption", minecraft -> {
             LocalPlayer player = minecraft.player;

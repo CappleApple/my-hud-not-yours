@@ -10,7 +10,8 @@ public final class BarVisibilityPolicy {
     }
 
     public static boolean hideForValue(HudElementLayout layout, NumericBarSnapshot snapshot) {
-        if (layout.hideWhenEmpty && snapshot.current() <= snapshot.minimum() + EPSILON) return true;
-        return layout.hideWhenFull && snapshot.current() >= snapshot.maximum() - EPSILON;
+        double fraction = snapshot.renderFraction();
+        if (layout.hideWhenEmpty && fraction <= EPSILON) return true;
+        return layout.hideWhenFull && fraction >= 1.0 - EPSILON;
     }
 }
