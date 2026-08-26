@@ -28,7 +28,7 @@ config/myhudnotyours/hud-layout.json
 * Every supported element provides **Original** and **Hidden** modes.
 * Data-linked bars additionally provide **Custom** and **Boss Bar** modes.
 * Elements can be independently shown or suppressed in creative mode.
-* Data-linked bars can hide themselves when empty or full.
+* Data-linked bars can hide themselves when empty or full, with configurable hide delay and fade-out duration.
 * Numeric fields support direct entry and mouse-wheel adjustment.
 * Custom bars can grow in width and/or height as their semantic maximum increases.
 * Color controls support a color wheel, hue and brightness adjustment, opacity, and direct `#RRGGBB` or `#RRGGBBAA` input.
@@ -93,7 +93,7 @@ Built-in sources include:
 
 Vanilla health, armor, hunger, air, experience, mount health, and mount jump layers are linked automatically.
 
-Custom and Boss Bar health replacements preserve vanilla health presentation state. Poison, wither, and full freezing tint the ordinary-health portion using vanilla's precedence, while absorption occupies a distinct overlay in the configured fill direction. Withered absorption uses the wither treatment instead of gold, matching vanilla hearts. These overlays reuse the configured Filled layer texture, opacity, scale mode, and layer-local transform; numeric text continues to report ordinary health and maximum health.
+Custom and Boss Bar health replacements preserve vanilla health presentation state. Poison, wither, and full freezing tint the ordinary-health portion using vanilla's precedence, while absorption occupies a distinct overlay in the configured fill direction. Any active absorption keeps the health bar visible regardless of its full/empty visibility rules. Withered absorption uses the wither treatment instead of gold, matching vanilla hearts. These overlays reuse the configured Filled layer texture, opacity, scale mode, and layer-local transform; numeric text continues to report ordinary health and maximum health.
 
 A bar's data source can also be changed manually in the editor.
 
@@ -118,7 +118,7 @@ and exposes the source:
 irons_spellbooks:mana
 ```
 
-Visibility follows Iron's own mana-bar visibility rules.
+Visibility follows Iron's own mana-bar visibility rules. Its synchronized full-mana sample remains tracked while Iron's contextual overlay is hidden, allowing Custom and Boss Bar replacements to honor Hide delay/Fade out and to trail from full mana on their first reappearance.
 
 ## Delayed Value Trail
 
@@ -136,6 +136,8 @@ The primary value updates immediately. Delay and catch-up timing advance exclusi
 Repeated qualifying changes restart the delay while preserving the outer trail value. In Decrease Only, healing below the retained high updates the live destination without canceling, restarting, or pausing the trail. Increase Only applies the same rule in reverse for damage above the retained low.
 
 When a bar is configured to hide at full or empty, that hidden endpoint remains a tick-sampled trail value. Its first visible change therefore trails from full or empty immediately instead of using the newly visible value as a fresh baseline.
+
+The Basic panel's **Hide delay** waits before a full, empty, or creative-mode hide begins. **Fade out** controls the subsequent fade duration. Both timers run on the 20 TPS client tick, render partial ticks only smooth opacity between tick samples, and clearing the hide condition restores the bar immediately. A bar that is already hidden when a world loads does not flash during initialization.
 
 ## HUD Discovery and Compatibility
 

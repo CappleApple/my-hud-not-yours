@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3 - 2026-08-26
+
+### Added
+
+- Per-bar Hide delay and Fade out timing controls for full, empty, and creative-mode visibility rules.
+
+### Changed
+
+- Health bars remain visible whenever absorption is present, including when absorption makes the effective fill full.
+- Conditional visibility timing advances exclusively on client ticks and bars reappear immediately when their hide condition clears.
+
+### Fixed
+
+- Iron's Spells mana replacements retain full-mana samples while the native contextual overlay is hidden, so the first reappearance trails from full mana.
+- Hide delay and fade-out timing now work for contextually hidden Iron's mana bars instead of preventing their replacement from rendering.
+
 ## 1.2 - 2026-08-26
 
 ### Added

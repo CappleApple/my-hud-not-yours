@@ -23,6 +23,10 @@ public final class HudElementLayout {
     /** Semantic bars may disappear at either end of their value range. */
     public boolean hideWhenFull = false;
     public boolean hideWhenEmpty = false;
+    /** Delay before a configured conditional hide begins. */
+    public int hideDelayMillis = 0;
+    /** Duration of the fade after {@link #hideDelayMillis}. */
+    public int hideFadeMillis = 0;
     public boolean initialized = false;
     public double nativeX = 0.0;
     public double nativeY = 0.0;
@@ -150,5 +154,7 @@ public final class HudElementLayout {
         for (int layer = 0; layer < 5; layer++) bar.layer(layer).sanitizeTransform();
         bar.trail.delayMillis = Math.max(0, Math.min(10_000, bar.trail.delayMillis));
         bar.trail.catchUpMillis = Math.max(1, Math.min(10_000, bar.trail.catchUpMillis));
+        hideDelayMillis = Math.max(0, Math.min(60_000, hideDelayMillis));
+        hideFadeMillis = Math.max(0, Math.min(60_000, hideFadeMillis));
     }
 }

@@ -66,7 +66,11 @@ public final class IronsSpellbooksManaSource implements NumericBarSource {
             double current = ((Number) getPlayerMana.invoke(null)).doubleValue();
             double maximum = Math.max(1.0, player.getAttributeValue(attribute));
             boolean active = (Boolean) shouldShowManaBar.invoke(null, player);
-            return new NumericBarSnapshot(current, 0.0, maximum, "Mana", null, active);
+            // Iron's contextual overlay becomes inactive at full mana, but its
+            // synchronized current/max values remain valid. Retain that sample
+            // so custom replacements can fade out and trail from the full edge.
+            return new NumericBarSnapshot(current, 0.0, maximum, "Mana", null,
+                    active, null, true);
         } catch (ReflectiveOperationException | ClassCastException exception) {
             invocationFailed = true;
             MyHudNotYours.LOGGER.warn("Could not read Iron's synchronized client mana state", exception);

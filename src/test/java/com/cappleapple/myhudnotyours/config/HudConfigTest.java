@@ -1,6 +1,7 @@
 package com.cappleapple.myhudnotyours.config;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.cappleapple.myhudnotyours.model.Bounds;
@@ -49,6 +50,18 @@ class HudConfigTest {
 
         assertTrue(legacy.showInCreative);
         assertTrue(config.configVersion >= 4);
+    }
+
+    @Test
+    void conditionalVisibilityTimingsAreSanitized() {
+        HudElementLayout layout = initialized("timed");
+        layout.hideDelayMillis = -1;
+        layout.hideFadeMillis = 100_000;
+
+        layout.sanitize();
+
+        assertEquals(0, layout.hideDelayMillis);
+        assertEquals(60_000, layout.hideFadeMillis);
     }
 
     private static HudElementLayout initialized(String id) {

@@ -3,12 +3,23 @@ package com.cappleapple.myhudnotyours.bar;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * One semantic bar sample. {@code active} is the source's contextual visibility
+ * request; {@code valueAvailable} keeps a valid numeric sample usable for
+ * delayed hiding, fading, and trail endpoint tracking while inactive.
+ */
 public record NumericBarSnapshot(double current, double minimum, double maximum, String displayName,
                                  @Nullable ResourceLocation icon, boolean active,
-                                 @Nullable HealthBarEffects healthEffects) {
+                                 @Nullable HealthBarEffects healthEffects, boolean valueAvailable) {
     public NumericBarSnapshot(double current, double minimum, double maximum, String displayName,
                               @Nullable ResourceLocation icon, boolean active) {
-        this(current, minimum, maximum, displayName, icon, active, null);
+        this(current, minimum, maximum, displayName, icon, active, null, active);
+    }
+
+    public NumericBarSnapshot(double current, double minimum, double maximum, String displayName,
+                              @Nullable ResourceLocation icon, boolean active,
+                              @Nullable HealthBarEffects healthEffects) {
+        this(current, minimum, maximum, displayName, icon, active, healthEffects, active);
     }
 
     public double fraction() {

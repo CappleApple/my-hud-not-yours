@@ -30,42 +30,56 @@ public final class CustomBarRenderer {
     private static final ResourceLocation BOSS_YELLOW_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/yellow_progress");
     private static final ResourceLocation BOSS_WHITE_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/white_progress");
     private static final TrailAnimator TRAILS = new TrailAnimator();
+    private static final BarVisibilityAnimator VISIBILITY = new BarVisibilityAnimator();
+    private static float renderOpacity = 1.0F;
 
     private CustomBarRenderer() {
     }
 
     public static void clientTick() {
         Minecraft minecraft = Minecraft.getInstance();
-        Set<String> activeElementIds = new HashSet<>();
+        Set<String> activeTrailIds = new HashSet<>();
+        Set<String> activeVisibilityIds = new HashSet<>();
         for (HudElementLayout layout : LayoutStore.get().elements.values()) {
-            if (!layout.customized || layout.lockedToDefault
-                    || (layout.renderMode != RenderMode.CUSTOM && layout.renderMode != RenderMode.BOSS_BAR)) {
-                continue;
-            }
+            if (!layout.customized || layout.lockedToDefault || !layout.semanticBar()) continue;
             NumericBarSource source = BarSourceRegistry.get(layout.barSourceId);
             if (source == null) continue;
             NumericBarSnapshot snapshot = source.snapshot(minecraft);
             if (snapshot == null) continue;
-            if (snapshot.active()
+            if (snapshot.valueAvailable()
                     && layout.observeBarMaximum(snapshot.maximum() - snapshot.minimum())) {
                 LayoutStore.markDirty();
             }
-            if (!snapshot.active()) continue;
-            activeElementIds.add(layout.id);
+            if (!snapshot.valueAvailable()) continue;
+            boolean valueHidden = BarVisibilityPolicy.hideForValue(layout, snapshot);
+            boolean sourceHidden = BarVisibilityPolicy.hideForSource(snapshot);
+            boolean creativeHidden = !layout.showInCreative
+                    && minecraft.player != null && minecraft.player.isCreative();
+            activeVisibilityIds.add(layout.id);
+            VISIBILITY.tick(layout.id, sourceHidden || valueHidden || creativeHidden,
+                    layout.hideDelayMillis, layout.hideFadeMillis);
+            if (layout.renderMode != RenderMode.CUSTOM && layout.renderMode != RenderMode.BOSS_BAR) continue;
+            activeTrailIds.add(layout.id);
             TRAILS.tick(layout.id, snapshot.renderFraction(), layout.bar.trail.mode,
                     layout.bar.trail.delayMillis, layout.bar.trail.catchUpMillis,
-                    BarVisibilityPolicy.hideForValue(layout, snapshot));
+                    sourceHidden || valueHidden);
         }
-        TRAILS.retainOnly(activeElementIds);
+        TRAILS.retainOnly(activeTrailIds);
+        VISIBILITY.retainOnly(activeVisibilityIds);
     }
 
     public static void clearTrailState() {
         TRAILS.clear();
+        VISIBILITY.clear();
+    }
+
+    public static float visibilityOpacity(String elementId, boolean hideRequested, float partialTick) {
+        return VISIBILITY.render(elementId, hideRequested, partialTick);
     }
 
     public static void render(GuiGraphics graphics, HudElementLayout layout, NumericBarSnapshot snapshot,
-                              float partialTick) {
-        if (!snapshot.active()) return;
+                              float partialTick, float visibilityOpacity) {
+        if (!snapshot.valueAvailable()) return;
         Bounds bounds = layout.resolvedBounds(graphics.guiWidth(), graphics.guiHeight());
         int x = (int) Math.round(bounds.x());
         int y = (int) Math.round(bounds.y());
@@ -74,14 +88,22 @@ public final class CustomBarRenderer {
         double value = snapshot.renderFraction();
         double trail = TRAILS.render(layout.id, value, partialTick);
 
+        float previousRenderOpacity = renderOpacity;
+        renderOpacity = Math.max(0.0F, Math.min(1.0F, visibilityOpacity));
+        resetTint(graphics);
         RenderSystem.enableBlend();
-        if (layout.renderMode == RenderMode.BOSS_BAR) {
-            renderBoss(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
-        } else {
-            renderCustom(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
+        try {
+            if (layout.renderMode == RenderMode.BOSS_BAR) {
+                renderBoss(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
+            } else {
+                renderCustom(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
+            }
+            renderText(graphics, layout.bar, snapshot, x, y, width, height, layout.scale);
+        } finally {
+            RenderSystem.disableBlend();
+            renderOpacity = previousRenderOpacity;
+            resetTint(graphics);
         }
-        RenderSystem.disableBlend();
-        renderText(graphics, layout.bar, snapshot, x, y, width, height, layout.scale);
     }
 
     private static void renderCustom(GuiGraphics graphics, BarStyle style, NumericBarSnapshot snapshot,
@@ -124,27 +146,25 @@ public final class CustomBarRenderer {
                                    int x, int y, int width, int height,
                                    double value, double trail, double elementScale) {
         LayerRect background = layerRect(style.background, x, y, width, height, elementScale);
+        tint(graphics, 0xFFFFFFFF, style.background == null ? 1.0F : style.background.opacity);
         drawBossSprite(graphics, BOSS_BACKGROUND, background.x, background.y, background.width, background.height);
+        resetTint(graphics);
         // The background and progress share a depth. Flush the background before
         // changing scissor/tint state so batching cannot replay it as a foreground draw.
         graphics.flush();
         if (trail > value) {
-            tint(graphics, style.trail.layer);
             drawBossFraction(graphics, style.trail.layer, x, y, width, height,
-                    style.fillDirection, 0.0, trail, elementScale);
-            resetTint(graphics);
+                    style.fillDirection, 0.0, trail, elementScale, true);
             drawBossFraction(graphics, style.filled, x, y, width, height,
-                    style.fillDirection, 0.0, value, elementScale);
+                    style.fillDirection, 0.0, value, elementScale, false);
             drawBossHealthEffects(graphics, style, snapshot, x, y, width, height, elementScale);
         } else {
             drawBossFraction(graphics, style.filled, x, y, width, height,
-                    style.fillDirection, 0.0, value, elementScale);
+                    style.fillDirection, 0.0, value, elementScale, false);
             drawBossHealthEffects(graphics, style, snapshot, x, y, width, height, elementScale);
             if (trail < value) {
-                tint(graphics, style.trail.layer);
                 drawBossFraction(graphics, style.trail.layer, x, y, width, height,
-                        style.fillDirection, trail, value, elementScale);
-                resetTint(graphics);
+                        style.fillDirection, trail, value, elementScale, true);
             }
         }
     }
@@ -233,14 +253,17 @@ public final class CustomBarRenderer {
     private static void drawBossFraction(GuiGraphics graphics, BarLayerStyle layer,
                                          int x, int y, int width, int height,
                                          FillDirection direction, double from, double to,
-                                         double elementScale) {
+                                         double elementScale, boolean useLayerColor) {
         LayerRect rect = layerRect(layer, x, y, width, height, elementScale);
         Clip clip = clip(rect.x, rect.y, rect.width, rect.height, direction, from, to);
         if (clip.width <= 0 || clip.height <= 0) return;
         graphics.flush();
         graphics.enableScissor(clip.x, clip.y, clip.x + clip.width, clip.y + clip.height);
+        if (useLayerColor && layer != null) tint(graphics, layer);
+        else tint(graphics, 0xFFFFFFFF, layer == null ? 1.0F : layer.opacity);
         drawBossSprite(graphics, BOSS_PROGRESS, rect.x, rect.y, rect.width, rect.height);
         graphics.flush();
+        resetTint(graphics);
         graphics.disableScissor();
     }
 
@@ -466,7 +489,7 @@ public final class CustomBarRenderer {
         graphics.pose().translate(textX + style.text.offsetX * elementScale,
                 textY + style.text.offsetY * elementScale, 2.0F);
         graphics.pose().scale(scale, scale, 1.0F);
-        graphics.drawString(minecraft.font, text, 0, 0, style.text.color, style.text.shadow);
+        graphics.drawString(minecraft.font, text, 0, 0, withOpacity(style.text.color, 1.0F), style.text.shadow);
         graphics.pose().popPose();
     }
 
@@ -476,7 +499,8 @@ public final class CustomBarRenderer {
     }
 
     private static int withOpacity(int color, float opacity) {
-        int alpha = Math.round(((color >>> 24) & 0xFF) * Math.max(0.0F, Math.min(1.0F, opacity)));
+        int alpha = Math.round(((color >>> 24) & 0xFF)
+                * Math.max(0.0F, Math.min(1.0F, opacity)) * renderOpacity);
         return (color & 0x00FFFFFF) | alpha << 24;
     }
 
@@ -486,7 +510,8 @@ public final class CustomBarRenderer {
 
     private static void tint(GuiGraphics graphics, int color, float opacity) {
         graphics.setColor(((color >> 16) & 0xFF) / 255.0F, ((color >> 8) & 0xFF) / 255.0F,
-                (color & 0xFF) / 255.0F, ((color >>> 24) & 0xFF) / 255.0F * opacity);
+                (color & 0xFF) / 255.0F,
+                ((color >>> 24) & 0xFF) / 255.0F * opacity * renderOpacity);
     }
 
     private static void resetTint(GuiGraphics graphics) {

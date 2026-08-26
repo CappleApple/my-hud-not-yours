@@ -364,6 +364,14 @@ public final class HudEditorScreen extends Screen {
                         layout.hideWhenEmpty = !layout.hideWhenEmpty;
                         changed();
                     });
+            y = stepper(graphics, x, y, contentWidth, "Hide delay", numericValue("basic.hide_delay",
+                    () -> layout.hideDelayMillis,
+                    value -> layout.hideDelayMillis = (int) Math.round(value),
+                    0.0, 60_000.0, 100.0, 0, " ms"));
+            y = stepper(graphics, x, y, contentWidth, "Fade out", numericValue("basic.hide_fade",
+                    () -> layout.hideFadeMillis,
+                    value -> layout.hideFadeMillis = (int) Math.round(value),
+                    0.0, 60_000.0, 100.0, 0, " ms"));
             y = stepper(graphics, x, y, contentWidth, "Width", numericValue("basic.width",
                     () -> layout.bar.width, value -> layout.bar.width = (int) Math.round(value),
                     8.0, 1024.0, 4.0, 0, ""));
@@ -980,12 +988,12 @@ public final class HudEditorScreen extends Screen {
     private int propertyContentHeight(HudElementLayout layout) {
         if (!layout.semanticBar()) {
             if (page == PropertyPage.BASIC) {
-                return layout.classification == HudElementType.BAR ? 421 : 169;
+                return layout.classification == HudElementType.BAR ? 463 : 169;
             }
             return 30;
         }
         return switch (page) {
-            case BASIC -> 421;
+            case BASIC -> 463;
             case STYLE -> layout.bar.layer(selectedLayer).textureScale == TextureScaleMode.SEGMENTED ? 321 : 300;
             case TEXTURES -> 210;
             case TRAIL -> 185;

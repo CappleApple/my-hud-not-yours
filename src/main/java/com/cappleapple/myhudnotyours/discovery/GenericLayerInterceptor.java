@@ -46,7 +46,7 @@ public final class GenericLayerInterceptor {
         if (layout.lockedToDefault) return;
         refreshKnownNativePosition(layerId, layout, graphics.guiWidth(), graphics.guiHeight());
         HudFrameTracker.begin(definition);
-        active = new ActiveLayer(definition, layout, false, false);
+        active = new ActiveLayer(definition, layout, false, false, false);
         boolean editorPreview = editorPreviewRequested(definition);
 
         // Untouched and reset elements are strict vanilla passthroughs. Bounds
@@ -56,7 +56,9 @@ public final class GenericLayerInterceptor {
         if (!layout.customized) return;
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (!editorPreview && !layout.showInCreative && minecraft.player != null && minecraft.player.isCreative()) {
+        boolean creativeHidden = !layout.showInCreative
+                && minecraft.player != null && minecraft.player.isCreative();
+        if (!editorPreview && creativeHidden && !layout.semanticBar()) {
             preserveVanillaBarSideEffects(event, definition, false);
             finishCanceled(graphics, false);
             event.setCanceled(true);
@@ -65,11 +67,17 @@ public final class GenericLayerInterceptor {
 
         NumericBarSource source = definition.semanticBar() ? BarSourceRegistry.get(layout.barSourceId) : null;
         NumericBarSnapshot snapshot = source == null ? null : source.snapshot(minecraft);
-        if (snapshot != null && snapshot.active()
+        if (snapshot != null && snapshot.valueAvailable()
                 && layout.observeBarMaximum(snapshot.maximum() - snapshot.minimum())) {
             LayoutStore.markDirty();
         }
-        if (!editorPreview && snapshot != null && BarVisibilityPolicy.hideForValue(layout, snapshot)) {
+        boolean valueHidden = snapshot != null && snapshot.valueAvailable()
+                && BarVisibilityPolicy.hideForValue(layout, snapshot);
+        boolean sourceHidden = snapshot != null && BarVisibilityPolicy.hideForSource(snapshot);
+        boolean conditionalHidden = creativeHidden || sourceHidden || valueHidden;
+        float visibilityOpacity = editorPreview ? 1.0F : CustomBarRenderer.visibilityOpacity(
+                layout.id, conditionalHidden, event.getPartialTick().getGameTimeDeltaPartialTick(false));
+        if (!editorPreview && layout.semanticBar() && visibilityOpacity <= 0.0001F) {
             preserveVanillaBarSideEffects(event, definition, false);
             finishCanceled(graphics, false);
             event.setCanceled(true);
@@ -85,19 +93,24 @@ public final class GenericLayerInterceptor {
 
         if ((layout.renderMode == RenderMode.CUSTOM || layout.renderMode == RenderMode.BOSS_BAR) && source != null) {
             NumericBarSnapshot renderedSnapshot = snapshot;
-            if (editorPreview && snapshot != null && !snapshot.active()) {
+            if (editorPreview && snapshot != null && !snapshot.valueAvailable()) {
                 renderedSnapshot = new NumericBarSnapshot(snapshot.current(), snapshot.minimum(), snapshot.maximum(),
                         snapshot.displayName(), snapshot.icon(), true, snapshot.healthEffects());
             }
-            boolean rendered = renderedSnapshot != null && renderedSnapshot.active();
+            boolean rendered = renderedSnapshot != null && renderedSnapshot.valueAvailable()
+                    && (renderedSnapshot.active() || visibilityOpacity > 0.0001F || editorPreview);
             preserveVanillaBarSideEffects(event, definition, rendered);
             if (rendered) CustomBarRenderer.render(graphics, layout, renderedSnapshot,
-                    event.getPartialTick().getGameTimeDeltaPartialTick(false));
+                    event.getPartialTick().getGameTimeDeltaPartialTick(false), visibilityOpacity);
             finishCanceled(graphics, rendered);
             event.setCanceled(true);
             return;
         }
 
+        boolean fadeTinted = layout.semanticBar() && visibilityOpacity < 0.9999F;
+        if (fadeTinted) {
+            graphics.setColor(1.0F, 1.0F, 1.0F, visibilityOpacity);
+        }
         if (layout.initialized && needsTransform(layout)) {
             Bounds target = layout.resolvedBounds(graphics.guiWidth(), graphics.guiHeight());
             graphics.pose().pushPose();
@@ -105,7 +118,9 @@ public final class GenericLayerInterceptor {
             graphics.pose().translate(layout.nativeX, layout.nativeY, 0.0);
             graphics.pose().scale((float) layout.scale, (float) layout.scale, 1.0F);
             graphics.pose().translate(-layout.nativeX, -layout.nativeY, 0.0);
-            active = new ActiveLayer(definition, layout, true, true);
+            active = new ActiveLayer(definition, layout, true, true, fadeTinted);
+        } else if (fadeTinted) {
+            active = new ActiveLayer(definition, layout, false, false, true);
         }
     }
 
@@ -113,6 +128,7 @@ public final class GenericLayerInterceptor {
         ActiveLayer current = active;
         if (current == null || !current.definition.stableId().equals(event.getName().toString())) return;
         if (current.posePushed) event.getGuiGraphics().pose().popPose();
+        if (current.fadeTinted) event.getGuiGraphics().setColor(1.0F, 1.0F, 1.0F, 1.0F);
         HudFrameTracker.FrameResult frame = HudFrameTracker.end();
         reconcileNativeBounds(current, frame.bounds(), event.getGuiGraphics().guiWidth(), event.getGuiGraphics().guiHeight());
         REGISTRY.update(current.definition, frame.bounds(), order - 1, frame.textures(), frame.bounds() != null,
@@ -209,6 +225,6 @@ public final class GenericLayerInterceptor {
     }
 
     private record ActiveLayer(HudElementDefinition definition, HudElementLayout layout,
-                               boolean posePushed, boolean transformed) {
+                               boolean posePushed, boolean transformed, boolean fadeTinted) {
     }
 }
