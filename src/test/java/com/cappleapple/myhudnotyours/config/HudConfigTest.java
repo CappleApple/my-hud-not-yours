@@ -64,6 +64,20 @@ class HudConfigTest {
         assertEquals(60_000, layout.hideFadeMillis);
     }
 
+    @Test
+    void preIdleVisibilityConfigsRemainVisibleWhileIdle() {
+        HudConfig config = new HudConfig();
+        config.configVersion = 5;
+        HudElementLayout legacy = initialized("legacy-idle");
+        legacy.showOnIdle = false;
+        config.elements.put(legacy.id, legacy);
+
+        config.sanitize();
+
+        assertTrue(legacy.showOnIdle);
+        assertTrue(config.configVersion >= 6);
+    }
+
     private static HudElementLayout initialized(String id) {
         HudElementLayout layout = new HudElementLayout();
         layout.id = id;

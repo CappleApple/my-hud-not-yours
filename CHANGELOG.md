@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4 - 2026-08-31
+
+### Added
+
+- A per-bar Show on idle toggle that uses the existing Hide delay and Fade out timing after semantic data stops changing.
+- Child of relationships with inherited visibility, translation, and scale while retaining independent child-local movement and scaling.
+- Visible-only Stack On relationships that center an element above its target and expose independent Stack X and Stack Y offsets.
+
+### Changed
+
+- Relationship selectors reject direct and indirect parent/stack cycles and preserve an element's visible transform when parenting or unparenting.
+- Existing configurations migrate with Show on idle enabled so 1.3 visibility behavior remains unchanged until explicitly configured.
+
 ## 1.3 - 2026-08-26
 
 ### Added

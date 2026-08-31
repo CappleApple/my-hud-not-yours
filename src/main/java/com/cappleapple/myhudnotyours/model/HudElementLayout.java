@@ -23,10 +23,18 @@ public final class HudElementLayout {
     /** Semantic bars may disappear at either end of their value range. */
     public boolean hideWhenFull = false;
     public boolean hideWhenEmpty = false;
+    /** When false, an unchanged semantic bar uses the configured hide timing. */
+    public boolean showOnIdle = true;
     /** Delay before a configured conditional hide begins. */
     public int hideDelayMillis = 0;
     /** Duration of the fade after {@link #hideDelayMillis}. */
     public int hideFadeMillis = 0;
+    /** Optional local-transform parent HUD element. */
+    public String parentId = "";
+    /** Optional element that conditionally positions this element directly above it. */
+    public String stackOnId = "";
+    public double stackOffsetX = 0.0;
+    public double stackOffsetY = 0.0;
     public boolean initialized = false;
     public double nativeX = 0.0;
     public double nativeY = 0.0;
@@ -44,14 +52,21 @@ public final class HudElementLayout {
     public Bounds resolvedBounds(int screenWidth, int screenHeight) {
         double x = anchor.x(screenWidth) + offsetX;
         double y = anchor.y(screenHeight) + offsetY;
+        return new Bounds(x, y, unscaledWidth() * scale, unscaledHeight() * scale);
+    }
+
+    public double unscaledWidth() {
         boolean replacement = renderMode == RenderMode.CUSTOM || renderMode == RenderMode.BOSS_BAR;
         double barWidth = BarMaximumGeometry.size(bar.width, bar.widthPerMaximum,
                 bar.sizeBaselineMaximum, observedBarMaximum);
+        return replacement ? barWidth : nativeWidth;
+    }
+
+    public double unscaledHeight() {
+        boolean replacement = renderMode == RenderMode.CUSTOM || renderMode == RenderMode.BOSS_BAR;
         double barHeight = BarMaximumGeometry.size(bar.height, bar.heightPerMaximum,
                 bar.sizeBaselineMaximum, observedBarMaximum);
-        double width = replacement ? barWidth * scale : nativeWidth * scale;
-        double height = replacement ? barHeight * scale : nativeHeight * scale;
-        return new Bounds(x, y, width, height);
+        return replacement ? barHeight : nativeHeight;
     }
 
     /** Returns true when a missing persisted baseline was initialized. */
@@ -113,6 +128,10 @@ public final class HudElementLayout {
         scale = 1.0;
         opacity = 1.0F;
         renderMode = RenderMode.ORIGINAL;
+        parentId = "";
+        stackOnId = "";
+        stackOffsetX = 0.0;
+        stackOffsetY = 0.0;
         customized = false;
     }
 
@@ -134,6 +153,8 @@ public final class HudElementLayout {
         if (anchor == null) anchor = ScreenAnchor.TOP_LEFT;
         if (renderMode == null) renderMode = RenderMode.ORIGINAL;
         if (barSourceId == null) barSourceId = "";
+        if (parentId == null || parentId.equals(id)) parentId = "";
+        if (stackOnId == null || stackOnId.equals(id)) stackOnId = "";
         if (bar == null) bar = new BarStyle();
         bar.sanitizeColorHistory();
         scale = Math.max(0.25, Math.min(4.0, scale));
@@ -156,5 +177,9 @@ public final class HudElementLayout {
         bar.trail.catchUpMillis = Math.max(1, Math.min(10_000, bar.trail.catchUpMillis));
         hideDelayMillis = Math.max(0, Math.min(60_000, hideDelayMillis));
         hideFadeMillis = Math.max(0, Math.min(60_000, hideFadeMillis));
+        if (!Double.isFinite(stackOffsetX)) stackOffsetX = 0.0;
+        if (!Double.isFinite(stackOffsetY)) stackOffsetY = 0.0;
+        stackOffsetX = Math.max(-1_000_000.0, Math.min(1_000_000.0, stackOffsetX));
+        stackOffsetY = Math.max(-1_000_000.0, Math.min(1_000_000.0, stackOffsetY));
     }
 }

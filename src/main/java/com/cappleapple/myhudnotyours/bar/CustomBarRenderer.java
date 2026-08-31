@@ -14,8 +14,10 @@ import com.cappleapple.myhudnotyours.model.TextureScaleMode;
 import com.cappleapple.myhudnotyours.texture.ManagedTextureResolver;
 import com.cappleapple.myhudnotyours.texture.TextureHandle;
 import com.mojang.blaze3d.systems.RenderSystem;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -31,6 +33,10 @@ public final class CustomBarRenderer {
     private static final ResourceLocation BOSS_WHITE_PROGRESS = ResourceLocation.withDefaultNamespace("boss_bar/white_progress");
     private static final TrailAnimator TRAILS = new TrailAnimator();
     private static final BarVisibilityAnimator VISIBILITY = new BarVisibilityAnimator();
+    private static final BarIdleTracker IDLE = new BarIdleTracker();
+    private static final Map<String, Boolean> HIDE_REQUESTS = new HashMap<>();
+    private static final Set<String> TRACKED_BARS = new HashSet<>();
+    private static final Set<String> AVAILABLE_BARS = new HashSet<>();
     private static float renderOpacity = 1.0F;
 
     private CustomBarRenderer() {
@@ -40,47 +46,73 @@ public final class CustomBarRenderer {
         Minecraft minecraft = Minecraft.getInstance();
         Set<String> activeTrailIds = new HashSet<>();
         Set<String> activeVisibilityIds = new HashSet<>();
+        Set<String> availableBarIds = new HashSet<>();
+        Set<String> trackedBarIds = new HashSet<>();
         for (HudElementLayout layout : LayoutStore.get().elements.values()) {
-            if (!layout.customized || layout.lockedToDefault || !layout.semanticBar()) continue;
+            if (!layout.semanticBar()) continue;
             NumericBarSource source = BarSourceRegistry.get(layout.barSourceId);
             if (source == null) continue;
             NumericBarSnapshot snapshot = source.snapshot(minecraft);
             if (snapshot == null) continue;
-            if (snapshot.valueAvailable()
+            trackedBarIds.add(layout.id);
+            activeVisibilityIds.add(layout.id);
+            boolean modControlsLayout = layout.customized && !layout.lockedToDefault;
+            if (modControlsLayout && snapshot.valueAvailable()
                     && layout.observeBarMaximum(snapshot.maximum() - snapshot.minimum())) {
                 LayoutStore.markDirty();
             }
-            if (!snapshot.valueAvailable()) continue;
-            boolean valueHidden = BarVisibilityPolicy.hideForValue(layout, snapshot);
-            boolean sourceHidden = BarVisibilityPolicy.hideForSource(snapshot);
-            boolean creativeHidden = !layout.showInCreative
+            boolean dataChanged = snapshot.valueAvailable() && IDLE.changedThisTick(layout.id, snapshot);
+            boolean valueHidden = modControlsLayout && snapshot.valueAvailable()
+                    && BarVisibilityPolicy.hideForValue(layout, snapshot);
+            boolean sourceHidden = !snapshot.valueAvailable() || BarVisibilityPolicy.hideForSource(snapshot);
+            boolean creativeHidden = modControlsLayout && !layout.showInCreative
                     && minecraft.player != null && minecraft.player.isCreative();
-            activeVisibilityIds.add(layout.id);
-            VISIBILITY.tick(layout.id, sourceHidden || valueHidden || creativeHidden,
-                    layout.hideDelayMillis, layout.hideFadeMillis);
+            boolean idleHidden = modControlsLayout && !layout.showOnIdle && !dataChanged;
+            boolean hideRequested = sourceHidden || valueHidden || creativeHidden || idleHidden;
+            HIDE_REQUESTS.put(layout.id, hideRequested);
+            VISIBILITY.tick(layout.id, hideRequested,
+                    modControlsLayout ? layout.hideDelayMillis : 0,
+                    modControlsLayout ? layout.hideFadeMillis : 0);
+            if (snapshot.valueAvailable()) availableBarIds.add(layout.id);
+            if (!modControlsLayout || !snapshot.valueAvailable()) continue;
             if (layout.renderMode != RenderMode.CUSTOM && layout.renderMode != RenderMode.BOSS_BAR) continue;
             activeTrailIds.add(layout.id);
             TRAILS.tick(layout.id, snapshot.renderFraction(), layout.bar.trail.mode,
                     layout.bar.trail.delayMillis, layout.bar.trail.catchUpMillis,
-                    sourceHidden || valueHidden);
+                    sourceHidden || valueHidden || idleHidden);
         }
         TRAILS.retainOnly(activeTrailIds);
         VISIBILITY.retainOnly(activeVisibilityIds);
+        IDLE.retainOnly(trackedBarIds);
+        HIDE_REQUESTS.keySet().retainAll(trackedBarIds);
+        TRACKED_BARS.clear();
+        TRACKED_BARS.addAll(trackedBarIds);
+        AVAILABLE_BARS.clear();
+        AVAILABLE_BARS.addAll(availableBarIds);
     }
 
     public static void clearTrailState() {
         TRAILS.clear();
         VISIBILITY.clear();
+        IDLE.clear();
+        HIDE_REQUESTS.clear();
+        TRACKED_BARS.clear();
+        AVAILABLE_BARS.clear();
     }
 
     public static float visibilityOpacity(String elementId, boolean hideRequested, float partialTick) {
         return VISIBILITY.render(elementId, hideRequested, partialTick);
     }
 
+    public static float visibilityOpacity(String elementId, float partialTick) {
+        if (TRACKED_BARS.contains(elementId) && !AVAILABLE_BARS.contains(elementId)) return 0.0F;
+        return VISIBILITY.render(elementId, HIDE_REQUESTS.getOrDefault(elementId, false), partialTick);
+    }
+
     public static void render(GuiGraphics graphics, HudElementLayout layout, NumericBarSnapshot snapshot,
+                              Bounds bounds, double effectiveScale,
                               float partialTick, float visibilityOpacity) {
         if (!snapshot.valueAvailable()) return;
-        Bounds bounds = layout.resolvedBounds(graphics.guiWidth(), graphics.guiHeight());
         int x = (int) Math.round(bounds.x());
         int y = (int) Math.round(bounds.y());
         int width = Math.max(1, (int) Math.round(bounds.width()));
@@ -94,11 +126,11 @@ public final class CustomBarRenderer {
         RenderSystem.enableBlend();
         try {
             if (layout.renderMode == RenderMode.BOSS_BAR) {
-                renderBoss(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
+                renderBoss(graphics, layout.bar, snapshot, x, y, width, height, value, trail, effectiveScale);
             } else {
-                renderCustom(graphics, layout.bar, snapshot, x, y, width, height, value, trail, layout.scale);
+                renderCustom(graphics, layout.bar, snapshot, x, y, width, height, value, trail, effectiveScale);
             }
-            renderText(graphics, layout.bar, snapshot, x, y, width, height, layout.scale);
+            renderText(graphics, layout.bar, snapshot, x, y, width, height, effectiveScale);
         } finally {
             RenderSystem.disableBlend();
             renderOpacity = previousRenderOpacity;

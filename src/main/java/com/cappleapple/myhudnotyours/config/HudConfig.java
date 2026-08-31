@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class HudConfig {
-    public int configVersion = 5;
+    public int configVersion = 6;
     public boolean debugMode = false;
     public Map<String, HudElementLayout> elements = new LinkedHashMap<>();
 
@@ -17,10 +17,11 @@ public final class HudConfig {
             layout.id = id;
             layout.sanitize();
             if (loadedVersion < 4) layout.showInCreative = true;
+            if (loadedVersion < 6) layout.showOnIdle = true;
             if (loadedVersion < 2 || !layout.customized) {
                 layout.customized = layout.hasLegacyCustomization();
             }
         });
-        configVersion = 5;
+        configVersion = 6;
     }
 }

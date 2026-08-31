@@ -6,12 +6,14 @@ import com.cappleapple.myhudnotyours.config.LayoutStore;
 import com.cappleapple.myhudnotyours.discovery.HudElementDefinition;
 import com.cappleapple.myhudnotyours.discovery.HudElementRegistry;
 import com.cappleapple.myhudnotyours.discovery.HudElementRuntime;
+import com.cappleapple.myhudnotyours.discovery.HudElementVisibility;
 import com.cappleapple.myhudnotyours.discovery.HudSnapTargets;
 import com.cappleapple.myhudnotyours.discovery.SnapEngine;
 import com.cappleapple.myhudnotyours.model.BarLayerStyle;
 import com.cappleapple.myhudnotyours.model.BarStyle;
 import com.cappleapple.myhudnotyours.model.Bounds;
 import com.cappleapple.myhudnotyours.model.HudElementLayout;
+import com.cappleapple.myhudnotyours.model.HudElementRelations;
 import com.cappleapple.myhudnotyours.model.HudElementType;
 import com.cappleapple.myhudnotyours.model.LayerMode;
 import com.cappleapple.myhudnotyours.model.NineSliceMargins;
@@ -328,15 +330,30 @@ public final class HudEditorScreen extends Screen {
             layout.renderMode = layout.renderMode.next(layout.semanticBar());
             changed();
         });
-        y = labeledCycle(graphics, x, y, contentWidth, "Anchor", pretty(layout.anchor), () -> {
-            layout.changeAnchor(layout.anchor.next(), width, height);
-            changed();
-        });
+        y = labeledCycle(graphics, x, y, contentWidth, "Anchor",
+                layout.parentId.isBlank() ? pretty(layout.anchor) : "Parent local", () -> {
+                    if (layout.parentId.isBlank()) {
+                        layout.changeAnchor(layout.anchor.next(), width, height);
+                        changed();
+                    }
+                });
         y = labeledCycle(graphics, x, y, contentWidth, "In creative",
                 layout.showInCreative ? "Show" : "Hide", () -> {
                     layout.showInCreative = !layout.showInCreative;
                     changed();
                 });
+        y = labeledCycle(graphics, x, y, contentWidth, "Child of",
+                relationName(layout.parentId), () -> cycleRelation(layout, true));
+        y = labeledCycle(graphics, x, y, contentWidth, "Stack On",
+                relationName(layout.stackOnId), () -> cycleRelation(layout, false));
+        if (!layout.stackOnId.isBlank()) {
+            y = stepper(graphics, x, y, contentWidth, "Stack X", numericValue("basic.stack_x",
+                    () -> layout.stackOffsetX, value -> layout.stackOffsetX = value,
+                    -1_000_000.0, 1_000_000.0, 1.0, 0, ""));
+            y = stepper(graphics, x, y, contentWidth, "Stack Y", numericValue("basic.stack_y",
+                    () -> layout.stackOffsetY, value -> layout.stackOffsetY = value,
+                    -1_000_000.0, 1_000_000.0, 1.0, 0, ""));
+        }
         y = stepper(graphics, x, y, contentWidth, "Scale", numericValue("basic.scale",
                 () -> layout.scale * 100.0, value -> layout.scale = value / 100.0,
                 25.0, 400.0, 5.0, 0, "%"));
@@ -362,6 +379,11 @@ public final class HudEditorScreen extends Screen {
             y = labeledCycle(graphics, x, y, contentWidth, "When empty",
                     layout.hideWhenEmpty ? "Hide" : "Show", () -> {
                         layout.hideWhenEmpty = !layout.hideWhenEmpty;
+                        changed();
+                    });
+            y = labeledCycle(graphics, x, y, contentWidth, "Show on idle",
+                    layout.showOnIdle ? "True" : "False", () -> {
+                        layout.showOnIdle = !layout.showOnIdle;
                         changed();
                     });
             y = stepper(graphics, x, y, contentWidth, "Hide delay", numericValue("basic.hide_delay",
@@ -823,11 +845,11 @@ public final class HudEditorScreen extends Screen {
             return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
         }
         double precision = hasShiftDown() ? 0.25 : 1.0;
-        layout.move((mouseX - lastDragX) * precision, (mouseY - lastDragY) * precision);
+        moveSelected(layout, (mouseX - lastDragX) * precision, (mouseY - lastDragY) * precision);
         lastDragX = mouseX;
         lastDragY = mouseY;
         if (!hasControlDown()) {
-            Bounds moving = layout.resolvedBounds(width, height);
+            Bounds moving = resolved(layout);
             List<Bounds> others = new ArrayList<>();
             for (HudElementDefinition definition : registry.discovered()) {
                 if (definition.stableId().equals(selectedId)) continue;
@@ -841,7 +863,7 @@ public final class HudEditorScreen extends Screen {
                 if (runtime != null && runtime.rendered() && runtime.bounds() != null) others.add(runtime.bounds());
             }
             snap = SnapEngine.snap(moving, others, width, height, 5.0);
-            layout.move(snap.deltaX(), snap.deltaY());
+            moveSelected(layout, snap.deltaX(), snap.deltaY());
         } else {
             snap = SnapEngine.SnapResult.none();
         }
@@ -914,10 +936,10 @@ public final class HudEditorScreen extends Screen {
         HudElementLayout layout = registry.layout(definition);
         // Configured bounds must drive a selected inactive element so the box
         // follows the cursor even though no fresh runtime bounds are arriving.
-        if (definition.stableId().equals(selectedId)) return layout.resolvedBounds(width, height);
+        if (definition.stableId().equals(selectedId)) return resolved(layout);
         HudElementRuntime runtime = registry.runtime(definition.stableId());
         if (runtime != null && runtime.bounds() != null) return runtime.bounds();
-        return layout.resolvedBounds(width, height);
+        return resolved(layout);
     }
 
     public boolean isListPreviewSelected(String id) {
@@ -988,12 +1010,13 @@ public final class HudEditorScreen extends Screen {
     private int propertyContentHeight(HudElementLayout layout) {
         if (!layout.semanticBar()) {
             if (page == PropertyPage.BASIC) {
-                return layout.classification == HudElementType.BAR ? 463 : 169;
+                int base = layout.classification == HudElementType.BAR ? 526 : 211;
+                return base + (layout.stackOnId.isBlank() ? 0 : 42);
             }
             return 30;
         }
         return switch (page) {
-            case BASIC -> 463;
+            case BASIC -> 526 + (layout.stackOnId.isBlank() ? 0 : 42);
             case STYLE -> layout.bar.layer(selectedLayer).textureScale == TextureScaleMode.SEGMENTED ? 321 : 300;
             case TEXTURES -> 210;
             case TRAIL -> 185;
@@ -1023,6 +1046,53 @@ public final class HudEditorScreen extends Screen {
         propertyScroll = 0;
         LayoutStore.markDirty();
         LayoutStore.saveNow();
+    }
+
+    private Bounds resolved(HudElementLayout layout) {
+        return HudElementRelations.resolve(layout, LayoutStore.get().elements, width, height,
+                id -> HudElementVisibility.visibleForStack(id, 0.0F)).bounds();
+    }
+
+    private void moveSelected(HudElementLayout layout, double dx, double dy) {
+        HudElementRelations.moveByScreen(layout, dx, dy, LayoutStore.get().elements,
+                width, height, id -> HudElementVisibility.visibleForStack(id, 0.0F));
+    }
+
+    private String relationName(String id) {
+        if (id == null || id.isBlank()) return "None";
+        HudElementDefinition definition = registry.definition(id);
+        if (definition != null) return registry.layout(definition).displayName;
+        HudElementLayout layout = LayoutStore.get().elements.get(id);
+        return layout == null ? id : layout.displayName;
+    }
+
+    private void cycleRelation(HudElementLayout layout, boolean parentRelation) {
+        List<String> candidates = new ArrayList<>();
+        candidates.add("");
+        for (HudElementDefinition definition : registry.discovered()) {
+            String candidate = definition.stableId();
+            if (candidate.equals(layout.id)
+                    || HudElementRelations.wouldCreateCycle(layout.id, candidate,
+                    LayoutStore.get().elements)) {
+                continue;
+            }
+            candidates.add(candidate);
+        }
+        String current = parentRelation ? layout.parentId : layout.stackOnId;
+        int currentIndex = candidates.indexOf(current);
+        String next = candidates.get((currentIndex + 1 + candidates.size()) % candidates.size());
+        if (parentRelation) {
+            HudElementRelations.setParent(layout, next, LayoutStore.get().elements,
+                    width, height, id -> HudElementVisibility.visibleForStack(id, 0.0F));
+        } else {
+            boolean firstLink = layout.stackOnId == null || layout.stackOnId.isBlank();
+            layout.stackOnId = next;
+            if (firstLink && !next.isBlank()) {
+                layout.stackOffsetX = 0.0;
+                layout.stackOffsetY = 0.0;
+            }
+        }
+        changed();
     }
 
     private String ellipsis(String value, int maximumWidth) {

@@ -3,6 +3,7 @@ package com.cappleapple.myhudnotyours.discovery;
 import com.cappleapple.myhudnotyours.config.LayoutStore;
 import com.cappleapple.myhudnotyours.model.Bounds;
 import com.cappleapple.myhudnotyours.model.HudElementLayout;
+import com.cappleapple.myhudnotyours.model.HudElementRelations;
 import com.cappleapple.myhudnotyours.model.HudElementType;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -121,7 +122,10 @@ public final class HudElementRegistry {
                     || layout.renderMode == com.cappleapple.myhudnotyours.model.RenderMode.HIDDEN) continue;
             HudElementRuntime state = runtime.get(definition.stableId());
             if (state == null || !state.rendered() || System.currentTimeMillis() - state.lastSeenMillis() > 250L) continue;
-            Bounds bounds = state.bounds() != null ? state.bounds() : layout.resolvedBounds(screenWidth, screenHeight);
+            Bounds bounds = state.bounds() != null ? state.bounds()
+                    : HudElementRelations.resolve(layout, LayoutStore.get().elements,
+                    screenWidth, screenHeight,
+                    id -> HudElementVisibility.visibleForStack(id, 0.0F)).bounds();
             if (bounds.contains(x, y)) result.add(definition);
         }
         result.sort(Comparator.comparingInt(definition -> {

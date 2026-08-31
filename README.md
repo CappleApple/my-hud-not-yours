@@ -29,6 +29,9 @@ config/myhudnotyours/hud-layout.json
 * Data-linked bars additionally provide **Custom** and **Boss Bar** modes.
 * Elements can be independently shown or suppressed in creative mode.
 * Data-linked bars can hide themselves when empty or full, with configurable hide delay and fade-out duration.
+* **Show on idle** can hide a bar after its semantic value/effects stop changing, using the same Hide delay and Fade out timing.
+* **Child of** links an element to another element's visibility and overall transform while preserving independent child-local movement and scaling.
+* **Stack On** conditionally centers an element above a visible target with editable Stack X and Stack Y offsets.
 * Numeric fields support direct entry and mouse-wheel adjustment.
 * Custom bars can grow in width and/or height as their semantic maximum increases.
 * Color controls support a color wheel, hue and brightness adjustment, opacity, and direct `#RRGGBB` or `#RRGGBBAA` input.
@@ -138,6 +141,14 @@ Repeated qualifying changes restart the delay while preserving the outer trail v
 When a bar is configured to hide at full or empty, that hidden endpoint remains a tick-sampled trail value. Its first visible change therefore trails from full or empty immediately instead of using the newly visible value as a fresh baseline.
 
 The Basic panel's **Hide delay** waits before a full, empty, or creative-mode hide begins. **Fade out** controls the subsequent fade duration. Both timers run on the 20 TPS client tick, render partial ticks only smooth opacity between tick samples, and clearing the hide condition restores the bar immediately. A bar that is already hidden when a world loads does not flash during initialization.
+
+When **Show on idle** is false, changes to the source's current value, range, absorption, or health-effect presentation reveal the bar immediately. The next unchanged client tick starts the same Hide delay/Fade out sequence. The first sample after loading establishes an idle baseline and does not flash the bar.
+
+## Element Relationships
+
+**Child of** stores the linked element's position and scale as a local transform beneath its parent. Linking and unlinking preserve the child's current on-screen bounds. Moving or scaling the parent composes through every descendant, while dragging, scaling, or directly editing the child changes only its own local transform. Parent visibility and fade opacity multiply through the chain.
+
+**Stack On** is a separate conditional placement rule. While its target is visible, the element is horizontally centered immediately above the target, plus its Stack X and Stack Y offsets. When the target is not visible, the element returns to its ordinary anchored or parent-local position. Dragging while the stack rule is active edits the stack offsets. Self-links and indirect cycles across either relationship are excluded.
 
 ## HUD Discovery and Compatibility
 

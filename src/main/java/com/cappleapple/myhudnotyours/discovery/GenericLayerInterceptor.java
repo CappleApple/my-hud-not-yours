@@ -1,7 +1,6 @@
 package com.cappleapple.myhudnotyours.discovery;
 
 import com.cappleapple.myhudnotyours.bar.BarSourceRegistry;
-import com.cappleapple.myhudnotyours.bar.BarVisibilityPolicy;
 import com.cappleapple.myhudnotyours.bar.CustomBarRenderer;
 import com.cappleapple.myhudnotyours.bar.NumericBarSnapshot;
 import com.cappleapple.myhudnotyours.bar.NumericBarSource;
@@ -9,6 +8,7 @@ import com.cappleapple.myhudnotyours.config.LayoutStore;
 import com.cappleapple.myhudnotyours.editor.HudEditorScreen;
 import com.cappleapple.myhudnotyours.model.Bounds;
 import com.cappleapple.myhudnotyours.model.HudElementLayout;
+import com.cappleapple.myhudnotyours.model.HudElementRelations;
 import com.cappleapple.myhudnotyours.model.RenderMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -33,6 +33,7 @@ public final class GenericLayerInterceptor {
 
     public static void onLayerPre(RenderGuiLayerEvent.Pre event) {
         GuiGraphics graphics = event.getGuiGraphics();
+        float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         ResourceLocation layerId = event.getName();
         // Camera overlays are screen-space render effects (vignette, portal,
         // spyglass, helmet overlays), not independently placeable HUD widgets.
@@ -46,7 +47,7 @@ public final class GenericLayerInterceptor {
         if (layout.lockedToDefault) return;
         refreshKnownNativePosition(layerId, layout, graphics.guiWidth(), graphics.guiHeight());
         HudFrameTracker.begin(definition);
-        active = new ActiveLayer(definition, layout, false, false, false);
+        active = new ActiveLayer(definition, layout, false, false, false, 1.0);
         boolean editorPreview = editorPreviewRequested(definition);
 
         // Untouched and reset elements are strict vanilla passthroughs. Bounds
@@ -60,7 +61,7 @@ public final class GenericLayerInterceptor {
                 && minecraft.player != null && minecraft.player.isCreative();
         if (!editorPreview && creativeHidden && !layout.semanticBar()) {
             preserveVanillaBarSideEffects(event, definition, false);
-            finishCanceled(graphics, false);
+            finishCanceled(graphics, false, partialTick);
             event.setCanceled(true);
             return;
         }
@@ -71,26 +72,25 @@ public final class GenericLayerInterceptor {
                 && layout.observeBarMaximum(snapshot.maximum() - snapshot.minimum())) {
             LayoutStore.markDirty();
         }
-        boolean valueHidden = snapshot != null && snapshot.valueAvailable()
-                && BarVisibilityPolicy.hideForValue(layout, snapshot);
-        boolean sourceHidden = snapshot != null && BarVisibilityPolicy.hideForSource(snapshot);
-        boolean conditionalHidden = creativeHidden || sourceHidden || valueHidden;
-        float visibilityOpacity = editorPreview ? 1.0F : CustomBarRenderer.visibilityOpacity(
-                layout.id, conditionalHidden, event.getPartialTick().getGameTimeDeltaPartialTick(false));
-        if (!editorPreview && layout.semanticBar() && visibilityOpacity <= 0.0001F) {
+        float visibilityOpacity = editorPreview ? 1.0F
+                : CustomBarRenderer.visibilityOpacity(layout.id, partialTick)
+                * HudElementVisibility.parentOpacity(layout, partialTick);
+        if (!editorPreview && visibilityOpacity <= 0.0001F) {
             preserveVanillaBarSideEffects(event, definition, false);
-            finishCanceled(graphics, false);
+            finishCanceled(graphics, false, partialTick);
             event.setCanceled(true);
             return;
         }
 
         if (!editorPreview && layout.renderMode == RenderMode.HIDDEN) {
             preserveVanillaBarSideEffects(event, definition, false);
-            finishCanceled(graphics, false);
+            finishCanceled(graphics, false, partialTick);
             event.setCanceled(true);
             return;
         }
 
+        HudElementRelations.Resolved resolved = resolved(layout,
+                graphics.guiWidth(), graphics.guiHeight(), partialTick);
         if ((layout.renderMode == RenderMode.CUSTOM || layout.renderMode == RenderMode.BOSS_BAR) && source != null) {
             NumericBarSnapshot renderedSnapshot = snapshot;
             if (editorPreview && snapshot != null && !snapshot.valueAvailable()) {
@@ -101,26 +101,26 @@ public final class GenericLayerInterceptor {
                     && (renderedSnapshot.active() || visibilityOpacity > 0.0001F || editorPreview);
             preserveVanillaBarSideEffects(event, definition, rendered);
             if (rendered) CustomBarRenderer.render(graphics, layout, renderedSnapshot,
-                    event.getPartialTick().getGameTimeDeltaPartialTick(false), visibilityOpacity);
-            finishCanceled(graphics, rendered);
+                    resolved.bounds(), resolved.scale(), partialTick, visibilityOpacity);
+            finishCanceled(graphics, rendered, partialTick);
             event.setCanceled(true);
             return;
         }
 
-        boolean fadeTinted = layout.semanticBar() && visibilityOpacity < 0.9999F;
+        boolean fadeTinted = visibilityOpacity < 0.9999F;
         if (fadeTinted) {
             graphics.setColor(1.0F, 1.0F, 1.0F, visibilityOpacity);
         }
-        if (layout.initialized && needsTransform(layout)) {
-            Bounds target = layout.resolvedBounds(graphics.guiWidth(), graphics.guiHeight());
+        if (layout.initialized && needsTransform(layout, resolved)) {
+            Bounds target = resolved.bounds();
             graphics.pose().pushPose();
             graphics.pose().translate(target.x() - layout.nativeX, target.y() - layout.nativeY, 0.0);
             graphics.pose().translate(layout.nativeX, layout.nativeY, 0.0);
-            graphics.pose().scale((float) layout.scale, (float) layout.scale, 1.0F);
+            graphics.pose().scale((float) resolved.scale(), (float) resolved.scale(), 1.0F);
             graphics.pose().translate(-layout.nativeX, -layout.nativeY, 0.0);
-            active = new ActiveLayer(definition, layout, true, true, fadeTinted);
+            active = new ActiveLayer(definition, layout, true, true, fadeTinted, resolved.scale());
         } else if (fadeTinted) {
-            active = new ActiveLayer(definition, layout, false, false, true);
+            active = new ActiveLayer(definition, layout, false, false, true, 1.0);
         }
     }
 
@@ -130,29 +130,32 @@ public final class GenericLayerInterceptor {
         if (current.posePushed) event.getGuiGraphics().pose().popPose();
         if (current.fadeTinted) event.getGuiGraphics().setColor(1.0F, 1.0F, 1.0F, 1.0F);
         HudFrameTracker.FrameResult frame = HudFrameTracker.end();
-        reconcileNativeBounds(current, frame.bounds(), event.getGuiGraphics().guiWidth(), event.getGuiGraphics().guiHeight());
+        reconcileNativeBounds(current, frame.bounds(), event.getGuiGraphics().guiWidth(),
+                event.getGuiGraphics().guiHeight(),
+                event.getPartialTick().getGameTimeDeltaPartialTick(false));
         REGISTRY.update(current.definition, frame.bounds(), order - 1, frame.textures(), frame.bounds() != null,
                 event.getGuiGraphics().guiWidth(), event.getGuiGraphics().guiHeight());
         active = null;
     }
 
-    private static void finishCanceled(GuiGraphics graphics, boolean rendered) {
+    private static void finishCanceled(GuiGraphics graphics, boolean rendered, float partialTick) {
         ActiveLayer current = active;
         HudFrameTracker.FrameResult frame = HudFrameTracker.end();
-        Bounds bounds = current.layout.resolvedBounds(graphics.guiWidth(), graphics.guiHeight());
+        Bounds bounds = resolved(current.layout, graphics.guiWidth(), graphics.guiHeight(), partialTick).bounds();
         REGISTRY.update(current.definition, bounds, order - 1, frame.textures(),
                 rendered && frame.bounds() != null,
                 graphics.guiWidth(), graphics.guiHeight());
         active = null;
     }
 
-    private static void reconcileNativeBounds(ActiveLayer current, Bounds rendered, int width, int height) {
+    private static void reconcileNativeBounds(ActiveLayer current, Bounds rendered,
+                                              int width, int height, float partialTick) {
         if (rendered == null) return;
         HudElementLayout layout = current.layout;
         if (!layout.initialized) return;
         if (current.transformed) {
-            Bounds target = layout.resolvedBounds(width, height);
-            double scale = Math.max(0.0001, layout.scale);
+            Bounds target = resolved(layout, width, height, partialTick).bounds();
+            double scale = Math.max(0.0001, current.transformedScale);
             layout.nativeX += (rendered.x() - target.x()) / scale;
             layout.nativeY += (rendered.y() - target.y()) / scale;
             layout.nativeWidth = Math.max(1.0, rendered.width() / scale);
@@ -185,12 +188,16 @@ public final class GenericLayerInterceptor {
         layout.nativeScreenHeight = height;
     }
 
-    private static boolean needsTransform(HudElementLayout layout) {
-        return Math.abs(layout.scale - 1.0) > 0.0001
-                || Math.abs(layout.resolvedBounds(Minecraft.getInstance().getWindow().getGuiScaledWidth(),
-                Minecraft.getInstance().getWindow().getGuiScaledHeight()).x() - layout.nativeX) > 0.001
-                || Math.abs(layout.resolvedBounds(Minecraft.getInstance().getWindow().getGuiScaledWidth(),
-                Minecraft.getInstance().getWindow().getGuiScaledHeight()).y() - layout.nativeY) > 0.001;
+    private static boolean needsTransform(HudElementLayout layout, HudElementRelations.Resolved resolved) {
+        return Math.abs(resolved.scale() - 1.0) > 0.0001
+                || Math.abs(resolved.bounds().x() - layout.nativeX) > 0.001
+                || Math.abs(resolved.bounds().y() - layout.nativeY) > 0.001;
+    }
+
+    private static HudElementRelations.Resolved resolved(HudElementLayout layout,
+                                                         int width, int height, float partialTick) {
+        return HudElementRelations.resolve(layout, LayoutStore.get().elements, width, height,
+                id -> HudElementVisibility.visibleForStack(id, partialTick));
     }
 
     private static boolean editorPreviewRequested(HudElementDefinition definition) {
@@ -225,6 +232,7 @@ public final class GenericLayerInterceptor {
     }
 
     private record ActiveLayer(HudElementDefinition definition, HudElementLayout layout,
-                               boolean posePushed, boolean transformed, boolean fadeTinted) {
+                               boolean posePushed, boolean transformed, boolean fadeTinted,
+                               double transformedScale) {
     }
 }
