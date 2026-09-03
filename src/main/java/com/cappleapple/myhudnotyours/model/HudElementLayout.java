@@ -16,8 +16,8 @@ public final class HudElementLayout {
     public BarStyle bar = new BarStyle();
     /** True only after an author deliberately changes this element. */
     public boolean customized = false;
-    /** Hard bypass: the mod may list this element but must not intercept its renderer. */
-    public boolean lockedToDefault = false;
+    /** Hard bypass: new elements must be explicitly unlocked before editing. */
+    public boolean lockedToDefault = true;
     /** Customized elements may be independently suppressed in creative mode. */
     public boolean showInCreative = true;
     /** Semantic bars may disappear at either end of their value range. */

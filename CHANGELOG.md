@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.1 - 2026-09-03
+
+### Changed
+
+- Newly discovered HUD elements now start locked to default and must be explicitly unlocked before they can be modified.
+- Existing untouched layouts migrate to the locked state while previously customized layouts retain their saved lock choice.
+
+### Fixed
+
+- Custom Iron's mana bars use the same integer maximum as Iron's renderer, so increased or fractional max-mana attributes hide correctly when full.
+
 ## 1.4 - 2026-08-31
 
 ### Added

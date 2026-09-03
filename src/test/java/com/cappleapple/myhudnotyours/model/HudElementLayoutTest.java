@@ -8,6 +8,11 @@ import org.junit.jupiter.api.Test;
 
 class HudElementLayoutTest {
     @Test
+    void newLayoutsStartLockedToDefault() {
+        assertTrue(new HudElementLayout().lockedToDefault);
+    }
+
+    @Test
     void untouchedNativePlacementIsNotMigratedAsCustomized() {
         HudElementLayout layout = new HudElementLayout();
         layout.initializeFrom(new Bounds(42.0, 73.0, 120.0, 12.0), 320, 180);

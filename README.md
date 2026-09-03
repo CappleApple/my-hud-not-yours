@@ -1,6 +1,6 @@
 # My HUD Not Yours
 
-My HUD Not Yours is a client-side NeoForge 1.21.1 HUD editor. Bind **Unlock HUD** in Minecraft's Controls menu, open it in a world, select an element, and manipulate it directly.
+My HUD Not Yours is a client-side NeoForge 1.21.1 HUD editor. Bind **Unlock HUD** in Minecraft's Controls menu, open it in a world, select an element, explicitly unlock that element, and manipulate it directly.
 
 The key is unbound by default.
 
@@ -22,7 +22,8 @@ config/myhudnotyours/hud-layout.json
 * Closing and reopening the editor during the same game run restores the last selected element, its preview behavior, and its visible row in the list. This selection is never written to disk.
 * Search elements by name, layer ID, namespace, or type.
 * Modified elements appear first in the element list with a yellow outline.
-* **Lock to default** elements appear last with a cyan outline and barrier icon. They completely bypass renderer interception, show no world marker, and remain available as passive snap targets.
+* Elements start **locked to default** and must be manually unlocked from the right-side panel before they can be edited.
+* Locked elements appear last with a cyan outline and barrier icon. They completely bypass renderer interception, show no world marker, and remain available as passive snap targets.
 * Anchor elements to any screen corner, edge center, or center.
 * Anchor-relative offsets remain stable across resolution, aspect-ratio, fullscreen, and GUI-scale changes.
 * Every supported element provides **Original** and **Hidden** modes.
@@ -123,6 +124,8 @@ irons_spellbooks:mana
 
 Visibility follows Iron's own mana-bar visibility rules. Its synchronized full-mana sample remains tracked while Iron's contextual overlay is hidden, allowing Custom and Boss Bar replacements to honor Hide delay/Fade out and to trail from full mana on their first reappearance.
 
+The source normalizes maximum mana to the same integer capacity rendered by Iron's own overlay, so fractional attribute modifiers cannot leave a full custom bar fractionally below its hide-at-full threshold.
+
 ## Delayed Value Trail
 
 Bars can display a delayed trail when their value changes.
@@ -154,7 +157,7 @@ When **Show on idle** is false, changes to the source's current value, range, ab
 
 My HUD Not Yours automatically discovers named NeoForge GUI layers and uses their stable layer IDs to identify HUD elements.
 
-Unmodified and reset elements remain visually untouched until explicitly changed in the editor. Locked elements use an even stronger bypass that returns before renderer tracking, transforms, cancellation, replacement rendering, or stacking shims.
+Newly discovered elements start locked. Existing untouched layouts migrate to locked, while previously customized layouts preserve their saved lock choice. Locked elements use a hard bypass that returns before renderer tracking, transforms, cancellation, replacement rendering, or stacking shims.
 
 Unknown mod HUD layers can often still be moved, scaled, hidden, and selected without dedicated compatibility code.
 

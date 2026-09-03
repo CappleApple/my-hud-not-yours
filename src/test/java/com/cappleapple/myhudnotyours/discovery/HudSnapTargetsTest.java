@@ -37,6 +37,7 @@ class HudSnapTargetsTest {
     void unlockedElementDoesNotUseLockedDefaultResolver() {
         HudElementDefinition definition = KnownHudElements.definition(VanillaGuiLayers.PLAYER_HEALTH);
         HudElementLayout layout = new HudElementLayout();
+        layout.lockedToDefault = false;
         layout.initializeFrom(new Bounds(69, 141, 81, 10), 320, 180);
         assertNull(HudSnapTargets.lockedDefault(definition, layout, 320, 180));
     }

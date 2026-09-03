@@ -78,6 +78,25 @@ class HudConfigTest {
         assertTrue(config.configVersion >= 6);
     }
 
+    @Test
+    void preDefaultLockConfigLocksOnlyUntouchedLayouts() {
+        HudConfig config = new HudConfig();
+        config.configVersion = 6;
+        HudElementLayout untouched = initialized("untouched-lock");
+        untouched.lockedToDefault = false;
+        HudElementLayout customized = initialized("customized-lock");
+        customized.lockedToDefault = false;
+        customized.customized = true;
+        config.elements.put(untouched.id, untouched);
+        config.elements.put(customized.id, customized);
+
+        config.sanitize();
+
+        assertTrue(untouched.lockedToDefault);
+        assertFalse(customized.lockedToDefault);
+        assertTrue(config.configVersion >= 7);
+    }
+
     private static HudElementLayout initialized(String id) {
         HudElementLayout layout = new HudElementLayout();
         layout.id = id;
